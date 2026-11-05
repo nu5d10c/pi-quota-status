@@ -299,7 +299,8 @@ export function renderStatus(label, entry) {
  * Returns ANSI-bearing lines; the caller truncates with truncateToWidth.
  */
 export function renderWidget(label, entry, { expanded = false } = {}, theme) {
-	if (!entry) return [theme.fg("dim", `${label} checking…`)];
+	if (!entry) return [theme.fg("dim", `checking…`)];
+	const plan = entry.plan ? theme.fg("text", entry.plan) : "";
 	const head = label + (entry.plan ? `·${entry.plan}` : "");
 	if (entry.error) return [theme.fg("error", `⛔ ${head} ${entry.error}`)];
 	if (entry.hint && (!entry.rows?.length || !expanded))
@@ -317,10 +318,11 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 			})
 			.join(theme.fg("dim", " | "));
 		const worst = Math.max(...rows.map((r) => Number(r.percent) || 0));
-		return [`${loadEmoji(worst)} ${theme.fg("text", head)} ${body}`];
+		return [`${loadEmoji(worst)} ${[plan, body].filter(Boolean).join(" ")}`];
 	}
 
-	const lines = [theme.fg("muted", head + (entry.hint ? `  💡 ${entry.hint}` : ""))];
+	const first = [plan, entry.hint ? `💡 ${entry.hint}` : ""].filter(Boolean).join("  ");
+	const lines = first ? [theme.fg("muted", first)] : [];
 	for (const r of rows) {
 		if (r.percent === undefined) {
 			lines.push(`  ${theme.fg("text", `${r.label} ${r.detail ?? ""}`)}`);
