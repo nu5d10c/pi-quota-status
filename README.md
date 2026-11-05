@@ -4,10 +4,10 @@
 
 ```
 📁 ~/Github/pi-quota-status
-⚡95.3%  📶12.3%  💰 5h 1% (3h12m) | 7d 0.4% (4d6h)          🧠 (zai) glm-5:high
+⚡95.3%  🌡️12.3%  💰 5h 1% (3h12m) | 7d 0.4% (4d6h)          🧠 (zai) glm-5:high
 ```
 
-Emoji markers: 📁 cwd · ⚡ cache hit rate · 📶 context percent (dim → warning >70% → error >90%) ·
+Emoji markers: 📁 cwd · ⚡ cache hit rate · 🌡️ context percent (dim → warning >70% → error >90%) ·
 💰 quota — plan windows show `time (countdown)`, balance shows a plain number · 🧠 model:thinking
 (provider shown only when >1 provider available).
 - `/quota` shows the multi-row detail (emoji meter, used/total, reset countdown) and force-refreshes
