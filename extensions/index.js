@@ -154,9 +154,14 @@ export default function (pi) {
 		const spec = providerId ? PROVIDERS[providerId] : undefined;
 		if (!spec) {
 			quotaText = null;
+			quotaIcon = "";
 			tuiRef?.requestRender();
 			return;
 		}
+		// drop the previous provider's snapshot immediately so the switch renders instantly
+		quotaText = null;
+		quotaIcon = "";
+		tuiRef?.requestRender();
 		try {
 			const entry = await refresh(providerId, ctx, force);
 			quotaText = renderStatus(spec.label, entry);
@@ -256,19 +261,19 @@ export default function (pi) {
 		}
 	}
 
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", (_event, ctx) => {
 		lastCtx = ctx;
 		stopTimer();
 		if (ctx.mode === "tui" && ctx.hasUI) mountFooter(ctx);
 		timer = setInterval(() => {
 			if (lastCtx) update(lastCtx).catch(() => {}); // keeps the countdown ticking
 		}, REFRESH_INTERVAL_MS);
-		await update(ctx).catch(() => {});
+		void update(ctx).catch(() => {});
 	});
 
-	pi.on("model_select", async (_event, ctx) => {
+	pi.on("model_select", (_event, ctx) => {
 		lastCtx = ctx;
-		await update(ctx).catch(() => {});
+		void update(ctx).catch(() => {}); // background only — never block the switch
 	});
 
 	pi.on("session_shutdown", () => {
