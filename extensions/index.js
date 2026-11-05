@@ -171,6 +171,9 @@ export default function (pi) {
 		activeProviderId = providerId;
 		try {
 			const entry = await refresh(providerId, ctx, force);
+			// the user may have switched models while the request was in flight —
+			// a stale response must never overwrite the new provider's state
+			if (activeProviderId !== providerId) return;
 			quotaText = renderStatus(spec.label, entry);
 		} catch {
 			// refresh never rejects; keep the previous snapshot just in case
@@ -275,6 +278,7 @@ export default function (pi) {
 		timer = setInterval(() => {
 			if (lastCtx) update(lastCtx).catch(() => {}); // keeps the countdown ticking
 		}, REFRESH_INTERVAL_MS);
+		timer.unref?.(); // never keep the process alive just for the refresh timer
 		void update(ctx).catch(() => {});
 	});
 
