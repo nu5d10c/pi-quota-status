@@ -196,8 +196,7 @@ export default function (pi) {
 					// context usage — colorized by threshold like the built-in footer
 					const cu = ctx.getContextUsage();
 					if (cu?.percent != null) {
-						const text = `${cu.percent.toFixed(1)}%/${fmtTokens(cu.contextWindow)}`;
-						const ctxStr = `📶${text}`;
+						const ctxStr = `📶${cu.percent.toFixed(1)}%`;
 						parts.push(
 							cu.percent > 90
 								? theme.fg("error", ctxStr)
@@ -214,7 +213,7 @@ export default function (pi) {
 					let rightPlain = ctx.model?.id || "";
 					if (rightPlain && ctx.model?.reasoning) {
 						const level = ctx.thinkingLevel || "off";
-						rightPlain += level === "off" ? " • thinking off" : ` • ${level}`;
+						rightPlain += `:${level}`;
 					}
 					if (rightPlain && footerData.getAvailableProviderCount() > 1 && ctx.model) {
 						rightPlain = `(${ctx.model.provider}) ${rightPlain}`;
