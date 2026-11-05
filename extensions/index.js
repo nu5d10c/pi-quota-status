@@ -1,7 +1,8 @@
 /**
  * pi-quota-status — index.js
  *
- * pi 扩展:使用对应模型的 provider 时,在状态栏显示该套餐的额度与刷新倒计时。
+ * pi 扩展:使用对应模型的 provider 时,在输入框上方的 widget 显示该套餐的
+ * 额度与刷新倒计时;`/quota` 展开多行详情 / 收起。
  *
  * 支持:
  *   zai                    → GLM Coding Plan 国际站(api.z.ai)
@@ -14,6 +15,7 @@
  * 每个 key 只发往其所属厂商的额度接口,不落日志、不进模型上下文。
  */
 
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import {
 	describeError,
 	fetchCodex,
@@ -21,11 +23,10 @@ import {
 	fetchGlm,
 	fetchMimo,
 	MIMO_COOKIE_HINT,
-	renderDetail,
-	renderStatus,
+	renderWidget,
 } from "./core.js";
 
-const STATUS_KEY = "quota";
+const WIDGET_KEY = "quota";
 const CACHE_TTL_MS = 60_000;
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -102,6 +103,30 @@ export default function (pi) {
 	let timer = null;
 	let lastCtx = null;
 
+	// widget 状态
+	let mounted = false;
+	let currentProvider = null; // { providerId, spec }
+	let entryRef = null; // 当前 provider 的最新 entry
+	let expanded = false;
+	let tuiRef = null;
+
+	function mountWidget(ctx) {
+		if (mounted) return;
+		mounted = true;
+		ctx.ui.setWidget(WIDGET_KEY, (tui, theme) => {
+			tuiRef = tui;
+			return {
+				render(width) {
+					const spec = currentProvider?.spec;
+					if (!spec) return []; // 不支持的 provider:零高度,不占空间
+					return renderWidget(spec.label, entryRef, { expanded }, theme).map((line) =>
+						truncateToWidth(line, width),
+					);
+				},
+			};
+		});
+	}
+
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
 		if (cached && !force && Date.now() - cached.at < CACHE_TTL_MS) return cached;
@@ -133,15 +158,20 @@ export default function (pi) {
 		const providerId = ctx.model?.provider;
 		const spec = providerId ? PROVIDERS[providerId] : undefined;
 		if (!spec) {
-			ctx.ui.setStatus(STATUS_KEY, undefined);
+			currentProvider = null;
+			entryRef = null;
+			tuiRef?.requestRender();
 			return;
 		}
+		mountWidget(ctx);
+		if (currentProvider?.providerId !== providerId) expanded = false; // 切模型时收起
+		currentProvider = { providerId, spec };
 		try {
-			const entry = await refresh(providerId, ctx, force);
-			ctx.ui.setStatus(STATUS_KEY, renderStatus(spec.label, entry));
+			entryRef = await refresh(providerId, ctx, force);
 		} catch {
-			// refresh 不应抛出;保险起见不更新状态栏
+			// refresh 不应抛出;保险起见保留上一个 entry
 		}
+		tuiRef?.requestRender();
 	}
 
 	function stopTimer() {
@@ -170,7 +200,7 @@ export default function (pi) {
 	});
 
 	pi.registerCommand("quota", {
-		description: "查看当前模型的套餐额度与刷新时间",
+		description: "展开/收起套餐额度详情(同时强制刷新)",
 		handler: async (_args, ctx) => {
 			const providerId = ctx.model?.provider;
 			const spec = providerId ? PROVIDERS[providerId] : undefined;
@@ -181,9 +211,7 @@ export default function (pi) {
 				);
 				return;
 			}
-			const entry = await refresh(providerId, ctx, true);
-			const lines = renderDetail(spec.label, entry);
-			ctx.ui.notify(lines.join("\n"), entry.error ? "warning" : "info");
+			expanded = !expanded;
 			await update(ctx, { force: true });
 		},
 	});

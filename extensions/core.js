@@ -248,6 +248,11 @@ function padLabel(label, width) {
 	return label + " ".repeat(Math.max(0, width - w));
 }
 
+/** 用量等级 → 主题色名 */
+export function levelColor(percent) {
+	return percent >= 90 ? "error" : percent >= 70 ? "warning" : "success";
+}
+
 /** 用量等级 → emoji:🟢 <70% 🟡 <90% 🔴 ≥90% */
 export function loadEmoji(percent) {
 	if (!Number.isFinite(percent)) return "💰";
@@ -284,6 +289,55 @@ export function renderStatus(label, entry) {
 	if (!body) return `💡 ${head} ${entry.hint ?? "无数据"}`;
 	const worst = Math.max(...(entry.rows ?? []).map((r) => Number(r.percent) || 0));
 	return `${loadEmoji(worst)} ${head} ${body}`;
+}
+
+/**
+ * widget 渲染(主题配色)。compact 单行;expanded 展开多行。
+ * 返回带 ANSI 的行,由调用方用 truncateToWidth 截断。
+ */
+export function renderWidget(label, entry, { expanded = false } = {}, theme) {
+	if (!entry) return [theme.fg("dim", `${label} 查询中…`)];
+	const head = label + (entry.plan ? `·${entry.plan}` : "");
+	if (entry.error) return [theme.fg("error", `⛔ ${head} ${entry.error}`)];
+	if (entry.hint && (!entry.rows?.length || !expanded))
+		return [theme.fg("warning", `💡 ${head} ${entry.hint}`)];
+
+	const rows = entry.rows ?? [];
+	if (!expanded) {
+		const body = rows
+			.map((r) => {
+				if (r.percent === undefined)
+					return theme.fg("text", `${r.label} ${r.detail ?? r.label}`);
+				const countdown = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
+				const main = theme.fg(levelColor(r.percent), `${r.label} ${fmtPct(r.percent)}`);
+				return countdown ? `${main} ${theme.fg("dim", `⏳${countdown}`)}` : main;
+			})
+			.join(theme.fg("dim", " | "));
+		const worst = Math.max(...rows.map((r) => Number(r.percent) || 0));
+		return [`${loadEmoji(worst)} ${theme.fg("text", head)} ${body}`];
+	}
+
+	const lines = [theme.fg("muted", head + (entry.hint ? `  💡 ${entry.hint}` : ""))];
+	for (const r of rows) {
+		if (r.percent === undefined) {
+			lines.push(`  ${theme.fg("text", `${r.label} ${r.detail ?? ""}`)}`);
+			continue;
+		}
+		const filled = Math.max(0, Math.min(10, Math.round((r.percent || 0) / 10)));
+		const bar =
+			theme.fg(levelColor(r.percent), "█".repeat(filled)) +
+			theme.fg("dim", "░".repeat(10 - filled));
+		const countdown = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
+		const parts = [
+			theme.fg("dim", padLabel(r.label, 5)),
+			bar,
+			theme.fg(levelColor(r.percent), fmtPct(r.percent).padStart(5)),
+		];
+		if (r.detail) parts.push(theme.fg("muted", r.detail));
+		if (countdown) parts.push(theme.fg("dim", `⏳${countdown}`));
+		lines.push("  " + parts.join("  "));
+	}
+	return lines;
 }
 
 /** /quota 命令的多行详情 */
