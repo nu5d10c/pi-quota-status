@@ -276,10 +276,8 @@ function barEmoji(percent) {
 	return cell.repeat(filled) + "⬜".repeat(10 - filled);
 }
 
-/** GLM 语义: 5h 滚动窗口闲置时无 nextResetTime,首请求才启动计时 */
 function countdownText(r) {
 	if (r.resetAt) return `⏳${fmtCountdown(r.resetAt - Date.now())}`;
-	if (Number(r.percent) === 0) return "idle";
 	return null;
 }
 
