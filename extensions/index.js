@@ -5,7 +5,8 @@
  * ONLY the selected elements — cache hit rate, context usage, plan quota —
  * with the model id right-aligned on the same line.
  *
- * Line layout:
+ * Line layout (line 1 is cwd with a git branch suffix when available):
+ *   📁 ~/path (main)
  *   CH95.3%  12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          glm-5
  * Statuses registered by other extensions via ctx.ui.setStatus() appear as a third line.
  *
@@ -257,6 +258,8 @@ export default function (pi) {
 					let cwd = ctx.sessionManager.getCwd?.() || ctx.cwd || "";
 					const home = process.env.HOME || process.env.USERPROFILE || "";
 					if (home && (cwd === home || cwd.startsWith(home + "/"))) cwd = "~" + cwd.slice(home.length);
+					const branch = footerData.getGitBranch();
+					if (branch) cwd += ` (${branch})`;
 					const pwdLine = truncateToWidth(theme.fg("dim", `📁 ${cwd}`), width, theme.fg("dim", "…"));
 
 					// line 2 left side, in order: cache hit rate, context usage, plan quota
