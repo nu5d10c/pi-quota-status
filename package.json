@@ -1,0 +1,39 @@
+{
+  "name": "pi-quota-status",
+  "version": "0.1.0",
+  "description": "Pi extension: shows coding-plan quota and reset countdown in the status bar when using the matching model — GLM (z.ai / bigmodel.cn), Codex, MiMo (CN), DeepSeek.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "quota",
+    "usage",
+    "coding-plan",
+    "token-plan",
+    "glm",
+    "zai",
+    "bigmodel",
+    "codex",
+    "mimo",
+    "xiaomi",
+    "deepseek"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nu5d10c/pi-quota-status.git"
+  }
+}
