@@ -4,7 +4,7 @@
 
 ```
 📁 ~/Github/pi-quota-status
-⚡95.3%  🌡️12.3%  💰 5h 1% (3h12m) | 7d 0.4% (4d6h)          🧠 (zai) glm-5:high
+⚡ 95.3%  🌡️ 12.3%  💰 5h 1% (3h12m) | 7d 0.4% (4d6h)          🧠 (zai) glm-5:high
 ```
 
 Emoji markers: 📁 cwd · ⚡ cache hit rate · 🌡️ context percent (dim → warning >70% → error >90%) ·
