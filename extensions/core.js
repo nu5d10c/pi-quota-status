@@ -232,13 +232,19 @@ const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$", EUR: "€", GBP: "£", SGD: "S$"
 export async function fetchDeepseek(key) {
 	const data = await getJson("https://api.deepseek.com/user/balance", { Authorization: `Bearer ${key}` });
 	const infos = Array.isArray(data?.balance_infos) ? data.balance_infos : [];
-	const rows = infos.map((bi) => {
-		const n = Number(bi.total_balance);
-		return {
-			label: CURRENCY_SYMBOLS[bi.currency] ?? bi.currency ?? "?",
-			detail: Number.isFinite(n) ? fmtInt(n) : String(bi.total_balance ?? "?"),
-		};
-	});
+	const rows = infos
+		.map((bi) => {
+			const n = Number(bi.total_balance);
+			return {
+				label: CURRENCY_SYMBOLS[bi.currency] ?? bi.currency ?? "?",
+				detail: Number.isFinite(n) ? fmtInt(n) : String(bi.total_balance ?? "?"),
+				numeric: Number.isFinite(n) ? n : 0,
+			};
+		})
+		// DeepSeek returns one wallet per currency (CNY for the CN platform, USD for
+		// the international one). Drop zero wallets unless every wallet is empty.
+		.filter((r) => r.numeric > 0 || !infos.some((bi) => Number(bi.total_balance) > 0))
+		.map(({ numeric, ...r }) => r);
 	if (!rows.length) return { rows: [], hint: "no balance returned" };
 	return { rows };
 }
