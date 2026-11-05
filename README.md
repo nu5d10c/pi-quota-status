@@ -1,8 +1,9 @@
 # pi-quota-status
 
-[Pi](https://pi.dev) extension: replaces the default footer with a minimal single line — **cache hit rate · context usage · plan quota** — with the model id right-aligned. No pwd line, no token/cost stats.
+[Pi](https://pi.dev) extension: replaces the default footer with two lines — **cwd**, then **cache hit rate · context usage · plan quota** with the model right-aligned.
 
 ```
+~/Github/pi-quota-status
 CH95.3%  12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          (zai) glm-5 • high
 ```
 
