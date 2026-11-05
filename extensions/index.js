@@ -196,7 +196,7 @@ export default function (pi) {
 					// context usage — colorized by threshold like the built-in footer
 					const cu = ctx.getContextUsage();
 					if (cu?.percent != null) {
-						const ctxStr = `📶${cu.percent.toFixed(1)}%`;
+						const ctxStr = `🌡️${cu.percent.toFixed(1)}%`;
 						parts.push(
 							cu.percent > 90
 								? theme.fg("error", ctxStr)
