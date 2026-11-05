@@ -23,6 +23,9 @@
  * never entered into model context.
  */
 
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	describeError,
@@ -37,6 +40,19 @@ import {
 
 const CACHE_TTL_MS = 60_000;
 const REFRESH_INTERVAL_MS = 60_000;
+const CONFIG_PATH = join(homedir(), ".pi", "agent", "pi-quota-status", "config.json");
+
+function loadConfig() {
+	try {
+		const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+		return config?.providers && typeof config.providers === "object" ? config.providers : {};
+	} catch (err) {
+		if (err?.code !== "ENOENT") console.warn(`pi-quota-status: could not read config file ${CONFIG_PATH}: ${err.message}`);
+		return {};
+	}
+}
+
+const CONFIG = loadConfig();
 
 const PROVIDERS = {
 	zai: {
@@ -50,7 +66,8 @@ const PROVIDERS = {
 		label: "GLM-CN",
 		fetch: (auth) => {
 			if (!auth.key) return { rows: [], hint: "no API key configured" };
-			return fetchGlm(auth.key, { host: "open.bigmodel.cn", scheme: "raw" });
+			const { orgId, projectId } = CONFIG["zai-coding-cn"] ?? {};
+			return fetchGlm(auth.key, { host: "open.bigmodel.cn", scheme: "raw", orgId, projectId });
 		},
 	},
 	"openai-codex": {
@@ -63,7 +80,7 @@ const PROVIDERS = {
 	"xiaomi-token-plan-cn": {
 		label: "MiMo",
 		fetch: () => {
-			const cookie = process.env.XIAOMI_MIMO_CONSOLE_COOKIE?.trim();
+			const cookie = (CONFIG["xiaomi-token-plan-cn"]?.cookie || process.env.XIAOMI_MIMO_CONSOLE_COOKIE)?.trim();
 			if (!cookie) return { rows: [], hint: MIMO_COOKIE_HINT };
 			return fetchMimo(cookie);
 		},
@@ -221,7 +238,7 @@ export default function (pi) {
 			// the user may have switched models while the request was in flight —
 			// a stale response must never overwrite the new provider's state
 			if (activeProviderId !== providerId) return;
-			quotaText = renderStatus(spec.label, entry);
+			quotaText = entry.rows?.length ? renderStatus(spec.label, entry) : null;
 		} catch {
 			// refresh never rejects; keep the previous snapshot just in case
 		}

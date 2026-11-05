@@ -111,10 +111,15 @@ function glmWindowLabel(limit) {
 	return /\d/.test(u) ? u : `${n}${u}`;
 }
 
-export async function fetchGlm(key, { host = "api.z.ai", scheme = "bearer" } = {}) {
-	const data = await getJson(`https://${host}/api/monitor/usage/quota/limit`, {
-		Authorization: scheme === "bearer" ? `Bearer ${key}` : key,
-	});
+export async function fetchGlm(key, { host = "api.z.ai", scheme = "bearer", orgId, projectId } = {}) {
+	const teamSeat = Boolean(orgId && projectId);
+	const url = `https://${host}/api/monitor/usage/quota/limit${teamSeat ? "?type=2" : ""}`;
+	const headers = { Authorization: scheme === "bearer" ? `Bearer ${key}` : key };
+	if (teamSeat) {
+		headers["Bigmodel-Organization"] = orgId;
+		headers["Bigmodel-Project"] = projectId;
+	}
+	const data = await getJson(url, headers);
 	if (data && data.success === false) {
 		const err = new Error(String(data.msg || "request failed"));
 		err.noPlan = /coding plan/i.test(String(data.msg ?? ""));
@@ -122,6 +127,12 @@ export async function fetchGlm(key, { host = "api.z.ai", scheme = "bearer" } = {
 	}
 	const limits = data?.data?.limits;
 	if (!Array.isArray(limits) || limits.length === 0) {
+		if (teamSeat && data?.success === true)
+			return {
+				plan: data?.data?.level,
+				rows: [],
+				hint: "team seat: empty data — check Bigmodel-Organization / Bigmodel-Project IDs in config",
+			};
 		// team seats need an organization ID to query; personal plans never land here
 		return { plan: data?.data?.level, rows: [], hint: "team seat or no plan data (org ID required, not supported)" };
 	}
@@ -195,7 +206,7 @@ export function parseMimoTime(value) {
 	return Number.isFinite(ts) ? ts : undefined;
 }
 
-export const MIMO_COOKIE_HINT = "needs a console cookie: set XIAOMI_MIMO_CONSOLE_COOKIE (tp- inference keys cannot query usage)";
+export const MIMO_COOKIE_HINT = "needs a console cookie: configure ~/.pi/agent/pi-quota-status/config.json or set XIAOMI_MIMO_CONSOLE_COOKIE (tp- inference keys cannot query usage)";
 
 export async function fetchMimo(cookie) {
 	const headers = { Cookie: cookie };
@@ -213,14 +224,18 @@ export async function fetchMimo(cookie) {
 	const monthItems = usage?.data?.monthUsage?.items;
 	const periodEnd = parseMimoTime(detail?.data?.currentPeriodEnd);
 	const rows = [];
+	const mimoPercent = (value) => {
+		const percent = Number(value);
+		return percent >= 0 && percent <= 1 ? percent * 100 : percent;
+	};
 	const plan = find(planItems, "plan_total_token");
-	if (plan) rows.push(row({ label: "Plan", percent: Number(plan.percent), used: Number(plan.used), limit: Number(plan.limit) }));
+	if (plan) rows.push(row({ label: "Plan", percent: mimoPercent(plan.percent), used: Number(plan.used), limit: Number(plan.limit) }));
 	const comp = find(planItems, "compensation_total_token");
 	if (comp && Number(comp.limit) > 0)
-		rows.push(row({ label: "Bonus", percent: Number(comp.percent), used: Number(comp.used), limit: Number(comp.limit) }));
+		rows.push(row({ label: "Bonus", percent: mimoPercent(comp.percent), used: Number(comp.used), limit: Number(comp.limit) }));
 	const month = find(monthItems, "month_total_token");
 	if (month)
-		rows.push(row({ label: "mo", percent: Number(month.percent), used: Number(month.used), limit: Number(month.limit), resetAt: periodEnd }));
+		rows.push(row({ label: "mo", percent: mimoPercent(month.percent), used: Number(month.used), limit: Number(month.limit), resetAt: periodEnd }));
 	if (!rows.length) return { plan: detail?.data?.planName, rows: [], hint: "no usage rows returned" };
 	return { plan: detail?.data?.planName, rows };
 }

@@ -13,7 +13,7 @@ Emoji markers: 📁 cwd · ⚡ cache hit rate · 🌡️ context percent (dim �
 - `/quota` shows the multi-row detail for the **current model's** provider (emoji meter, used/total, reset countdown) and force-refreshes
 - `/quota-all` toggles a **persistent widget** listing every supported provider — all fetchers run in parallel, unconfigured ones show a hint (60s cache); press **Esc** to close it (Esc keeps its normal meaning while the widget is closed)
 - Fetches are async and cached (60s); rendering never blocks on the network
-- The quota part follows model switches; for unsupported providers the line shows only CH + context
+- The quota part follows model switches; a provider appears in the status line only when quota rows are resolved (errors, missing credentials, and empty data are suppressed; `/quota` retains diagnostic hints)
 - Auto-refreshes every 60s; one provider failing never affects the others
 
 ## Supported providers
@@ -38,6 +38,26 @@ For local development:
 pi -e ./pi-quota-status
 ```
 
+## Configuration
+
+Optional provider settings are read from `~/.pi/agent/pi-quota-status/config.json`. Missing files are ignored; invalid JSON is warned about and ignored.
+
+```json
+{
+  "providers": {
+    "xiaomi-token-plan-cn": {
+      "cookie": "<full console Cookie header value; redacted>"
+    },
+    "zai-coding-cn": {
+      "orgId": "<Bigmodel organization ID>",
+      "projectId": "<Bigmodel project ID>"
+    }
+  }
+}
+```
+
+MiMo's config cookie takes precedence over the `XIAOMI_MIMO_CONSOLE_COOKIE` environment variable. GLM China uses the organization and project IDs together to query team-seat quota; omit either to retain the personal-plan behavior.
+
 ## MiMo notes
 
 MiMo Token Plan usage lives behind Xiaomi SSO; the `tp-`/`mk-` inference key cannot query it. You need the browser console session cookie:
@@ -45,13 +65,13 @@ MiMo Token Plan usage lives behind Xiaomi SSO; the `tp-`/`mk-` inference key can
 1. Log in to [platform.xiaomimimo.com](https://platform.xiaomimimo.com)
 2. Open DevTools → Network, reload, find a request to `platform.xiaomimimo.com`
 3. Copy the full `Cookie` request header value
-4. `export XIAOMI_MIMO_CONSOLE_COOKIE='<paste>'` (put it in your shell config)
+4. Add it as `providers.xiaomi-token-plan-cn.cookie` in `~/.pi/agent/pi-quota-status/config.json` (primary source); alternatively, `export XIAOMI_MIMO_CONSOLE_COOKIE='<paste>'` remains supported.
 
 The cookie expires with the browser session; when it does, the status shows the hint again.
 
 ## Known limitations
 
-- **GLM team seats**: querying requires an organization ID, which is not supported; the status shows a hint instead of an error.
+- **GLM team seats**: supported for China (`zai-coding-cn`) when both `orgId` and `projectId` are set in the config file; global GLM does not use seat settings.
 - The GLM / Codex quota endpoints are undocumented; official changes will require an update here.
 - DeepSeek is a topped-up balance with no "reset" concept — only the balance is shown.
 
