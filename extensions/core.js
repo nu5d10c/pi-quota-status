@@ -295,13 +295,19 @@ function rowText(r, { compact = true } = {}) {
 	return r.detail ? `${r.label} ${r.detail}` : r.label;
 }
 
+/** Capitalize the plan level for display (max → Max, pro → Pro). */
+function capPlan(plan) {
+	if (!plan) return plan;
+	return plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
 /**
- * 状态栏一行(无 ANSI)。与 renderWidget compact 同语义:
- * 🟢🟡🔴 = plan 用量等级;💰 = 余额计费;正常态不重复 provider 名。
+ * One status line (no ANSI). Same semantics as renderWidget compact:
+ * 🟢🟡🔴 = plan usage level;💰 = balance/pay-as-you-go;no provider name in normal state.
  */
 export function renderStatus(label, entry) {
 	if (!entry) return `${label} checking…`;
-	const head = label + (entry.plan ? `·${entry.plan}` : "");
+	const head = label + (entry.plan ? `·${capPlan(entry.plan)}` : "");
 	if (entry.error) return `⛔ ${head} ${entry.error}`;
 	if (entry.hint && !entry.rows?.length) return `💡 ${head} ${entry.hint}`;
 	const body = (entry.rows ?? []).map((r) => rowText(r)).join(" | ");
@@ -309,7 +315,7 @@ export function renderStatus(label, entry) {
 	const rows = entry.rows ?? [];
 	const hasUsage = rows.some((r) => r.percent !== undefined);
 	const icon = hasUsage ? loadEmoji(Math.max(...rows.map((r) => Number(r.percent) || 0))) : "💰";
-	const plan = entry.plan ?? "";
+	const plan = capPlan(entry.plan) ?? "";
 	return `${icon} ${[plan, body].filter(Boolean).join(" ")}`;
 }
 
@@ -319,8 +325,8 @@ export function renderStatus(label, entry) {
  */
 export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 	if (!entry) return [theme.fg("dim", `checking…`)];
-	const plan = entry.plan ? theme.fg("text", entry.plan) : "";
-	const head = label + (entry.plan ? `·${entry.plan}` : "");
+	const plan = entry.plan ? theme.fg("text", capPlan(entry.plan)) : "";
+	const head = label + (entry.plan ? `·${capPlan(entry.plan)}` : "");
 	if (entry.error) return [theme.fg("error", `⛔ ${head} ${entry.error}`)];
 	if (entry.hint && (!entry.rows?.length || !expanded))
 		return [theme.fg("warning", `💡 ${head} ${entry.hint}`)];
@@ -369,7 +375,7 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 /** Multi-line detail (kept for tests / alternative UIs). */
 export function renderDetail(label, entry) {
 	const lines = [];
-	const head = `${label}${entry.plan ? ` (${entry.plan})` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
+	const head = `${label}${entry.plan ? ` (${capPlan(entry.plan)})` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
 	lines.push(head);
 	if (entry.hint) lines.push(`  💡 ${entry.hint}`);
 	for (const r of entry.rows ?? []) lines.push(`  ${rowText(r, { compact: false })}`);
