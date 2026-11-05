@@ -1,6 +1,6 @@
 # pi-quota-status
 
-[Pi](https://pi.dev) extension: replaces the default footer with two lines — **cwd**, then **cache hit rate · context usage · plan quota** with the model right-aligned.
+[Pi](https://pi.dev) extension: replaces the default footer with **cwd**, then **cache hit rate · context usage · plan quota** with the model right-aligned; statuses from other extensions appear on a third line.
 
 ```
 📁 ~/Github/pi-quota-status

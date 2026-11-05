@@ -7,6 +7,7 @@
  *
  * Line layout:
  *   CH95.3%  12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          glm-5
+ * Statuses registered by other extensions via ctx.ui.setStatus() appear as a third line.
  *
  * Fetches are fully async and never block rendering: the footer renders from a
  * cached snapshot; network updates land on the next frame via requestRender().
@@ -322,7 +323,16 @@ export default function (pi) {
 							line = truncateToWidth(left, width, theme.fg("dim", "…"));
 						}
 					}
-					return [pwdLine, line];
+					const lines = [pwdLine, line];
+					const extensionStatuses = footerData.getExtensionStatuses();
+					if (extensionStatuses.size > 0) {
+						const statusLine = Array.from(extensionStatuses.entries())
+							.sort(([a], [b]) => a.localeCompare(b))
+							.map(([, text]) => text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim())
+							.join(" ");
+						lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "…")));
+					}
+					return lines;
 				},
 			};
 		});
