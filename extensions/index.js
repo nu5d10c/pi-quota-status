@@ -167,7 +167,7 @@ export default function (pi) {
 	}
 
 	function mountFooter(ctx) {
-		ctx.ui.setFooter((tui, theme, _footerData) => {
+		ctx.ui.setFooter((tui, theme, footerData) => {
 			tuiRef = tui;
 			return {
 				invalidate() {},
@@ -203,9 +203,17 @@ export default function (pi) {
 					// plan quota / balance
 					if (quotaText) parts.push(theme.fg("dim", quotaText));
 
-					// right side: model id
-					const right = ctx.model?.id ? theme.fg("dim", ctx.model.id) : "";
-					const rightWidth = ctx.model?.id ? visibleWidth(ctx.model.id) : 0;
+					// right side: (provider) model • thinking — same format as the built-in footer
+					let rightPlain = ctx.model?.id || "";
+					if (rightPlain && ctx.model?.reasoning) {
+						const level = ctx.thinkingLevel || "off";
+						rightPlain += level === "off" ? " • thinking off" : ` • ${level}`;
+					}
+					if (rightPlain && footerData.getAvailableProviderCount() > 1 && ctx.model) {
+						rightPlain = `(${ctx.model.provider}) ${rightPlain}`;
+					}
+					const right = rightPlain ? theme.fg("dim", rightPlain) : "";
+					const rightWidth = visibleWidth(rightPlain);
 
 					const sep = theme.fg("dim", "  ");
 					let left = parts.join(sep);
