@@ -30,6 +30,7 @@ import {
 	fetchDeepseek,
 	fetchGlm,
 	fetchMimo,
+	loadEmoji,
 	MIMO_COOKIE_HINT,
 	renderDetail,
 	renderStatus,
@@ -121,6 +122,7 @@ export default function (pi) {
 	let lastCtx = null;
 	let tuiRef = null;
 	let quotaText = null; // cached renderStatus output for the current provider
+	let quotaIcon = ""; // 💰 for balance, 🟢🟡🔴 for plan usage
 
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
@@ -160,6 +162,10 @@ export default function (pi) {
 		try {
 			const entry = await refresh(providerId, ctx, force);
 			quotaText = renderStatus(spec.label, entry);
+			const rows = entry.rows ?? [];
+			quotaIcon = rows.some((r) => r.percent !== undefined)
+				? loadEmoji(Math.max(...rows.map((r) => Number(r.percent) || 0)))
+				: "💰";
 		} catch {
 			// refresh never rejects; keep the previous snapshot just in case
 		}
@@ -177,7 +183,7 @@ export default function (pi) {
 					let cwd = ctx.sessionManager.getCwd?.() || ctx.cwd || "";
 					const home = process.env.HOME || process.env.USERPROFILE || "";
 					if (home && (cwd === home || cwd.startsWith(home + "/"))) cwd = "~" + cwd.slice(home.length);
-					const pwdLine = truncateToWidth(theme.fg("dim", cwd), width, theme.fg("dim", "…"));
+					const pwdLine = truncateToWidth(theme.fg("dim", `📁 ${cwd}`), width, theme.fg("dim", "…"));
 
 					// line 2 left side, in order: cache hit rate, context usage, plan quota
 					const parts = [];
@@ -191,23 +197,24 @@ export default function (pi) {
 							if (denom > 0) latestHit = ((u.cacheRead || 0) / denom) * 100;
 						}
 					}
-					if (latestHit !== undefined) parts.push(theme.fg("dim", `CH${latestHit.toFixed(1)}%`));
+					if (latestHit !== undefined) parts.push(theme.fg("dim", `⚡CH${latestHit.toFixed(1)}%`));
 
 					// context usage — colorized by threshold like the built-in footer
 					const cu = ctx.getContextUsage();
 					if (cu?.percent != null) {
 						const text = `${cu.percent.toFixed(1)}%/${fmtTokens(cu.contextWindow)}`;
+						const ctxStr = `🧠${text}`;
 						parts.push(
 							cu.percent > 90
-								? theme.fg("error", text)
+								? theme.fg("error", ctxStr)
 								: cu.percent > 70
-									? theme.fg("warning", text)
-									: theme.fg("dim", text),
+									? theme.fg("warning", ctxStr)
+									: theme.fg("dim", ctxStr),
 						);
 					}
 
-					// plan quota / balance
-					if (quotaText) parts.push(theme.fg("dim", quotaText));
+					// plan quota / balance (💰 = balance, 🟢🟡🔴 = plan usage level)
+					if (quotaText) parts.push(theme.fg("dim", quotaIcon ? `${quotaIcon} ${quotaText}` : quotaText));
 
 					// right side: (provider) model • thinking — same format as the built-in footer
 					let rightPlain = ctx.model?.id || "";
@@ -218,8 +225,8 @@ export default function (pi) {
 					if (rightPlain && footerData.getAvailableProviderCount() > 1 && ctx.model) {
 						rightPlain = `(${ctx.model.provider}) ${rightPlain}`;
 					}
-					const right = rightPlain ? theme.fg("dim", rightPlain) : "";
-					const rightWidth = visibleWidth(rightPlain);
+					const right = rightPlain ? theme.fg("dim", `🤖 ${rightPlain}`) : "";
+					const rightWidth = rightPlain ? visibleWidth(`🤖 ${rightPlain}`) : 0;
 
 					const sep = theme.fg("dim", "  ");
 					let left = parts.join(sep);
