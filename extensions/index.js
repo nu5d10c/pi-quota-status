@@ -30,7 +30,6 @@ import {
 	fetchDeepseek,
 	fetchGlm,
 	fetchMimo,
-	loadEmoji,
 	MIMO_COOKIE_HINT,
 	renderDetail,
 	renderStatus,
@@ -122,7 +121,6 @@ export default function (pi) {
 	let lastCtx = null;
 	let tuiRef = null;
 	let quotaText = null; // cached renderStatus output for the current provider
-	let quotaIcon = ""; // 💰 for balance, 🟢🟡🔴 for plan usage
 
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
@@ -162,10 +160,6 @@ export default function (pi) {
 		try {
 			const entry = await refresh(providerId, ctx, force);
 			quotaText = renderStatus(spec.label, entry);
-			const rows = entry.rows ?? [];
-			quotaIcon = rows.some((r) => r.percent !== undefined)
-				? loadEmoji(Math.max(...rows.map((r) => Number(r.percent) || 0)))
-				: "💰";
 		} catch {
 			// refresh never rejects; keep the previous snapshot just in case
 		}
@@ -197,13 +191,13 @@ export default function (pi) {
 							if (denom > 0) latestHit = ((u.cacheRead || 0) / denom) * 100;
 						}
 					}
-					if (latestHit !== undefined) parts.push(theme.fg("dim", `⚡CH${latestHit.toFixed(1)}%`));
+					if (latestHit !== undefined) parts.push(theme.fg("dim", `⚡${latestHit.toFixed(1)}%`));
 
 					// context usage — colorized by threshold like the built-in footer
 					const cu = ctx.getContextUsage();
 					if (cu?.percent != null) {
 						const text = `${cu.percent.toFixed(1)}%/${fmtTokens(cu.contextWindow)}`;
-						const ctxStr = `🧠${text}`;
+						const ctxStr = `📶${text}`;
 						parts.push(
 							cu.percent > 90
 								? theme.fg("error", ctxStr)
@@ -213,8 +207,8 @@ export default function (pi) {
 						);
 					}
 
-					// plan quota / balance (💰 = balance, 🟢🟡🔴 = plan usage level)
-					if (quotaText) parts.push(theme.fg("dim", quotaIcon ? `${quotaIcon} ${quotaText}` : quotaText));
+					// plan quota / balance — one 💰 for both; numbers vs times tell them apart
+					if (quotaText) parts.push(theme.fg("dim", `💰 ${quotaText}`));
 
 					// right side: (provider) model • thinking — same format as the built-in footer
 					let rightPlain = ctx.model?.id || "";
@@ -225,8 +219,8 @@ export default function (pi) {
 					if (rightPlain && footerData.getAvailableProviderCount() > 1 && ctx.model) {
 						rightPlain = `(${ctx.model.provider}) ${rightPlain}`;
 					}
-					const right = rightPlain ? theme.fg("dim", `🤖 ${rightPlain}`) : "";
-					const rightWidth = rightPlain ? visibleWidth(`🤖 ${rightPlain}`) : 0;
+					const right = rightPlain ? theme.fg("dim", `🧠 ${rightPlain}`) : "";
+					const rightWidth = rightPlain ? visibleWidth(`🧠 ${rightPlain}`) : 0;
 
 					const sep = theme.fg("dim", "  ");
 					let left = parts.join(sep);
