@@ -3,10 +3,11 @@
 [Pi](https://pi.dev) extension: replaces the default footer with a minimal single line — **cache hit rate · context usage · plan quota** — with the model id right-aligned. No pwd line, no token/cost stats.
 
 ```
-CH95.3%  12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          glm-5
+CH95.3%  12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          (zai) glm-5 • high
 ```
 
 - Context usage colorizes by threshold (dim → warning >70% → error >90%)
+- Model shows provider (only when >1 provider available, like stock) and thinking level
 - `/quota` shows the multi-row detail (emoji meter, used/total, reset countdown) and force-refreshes
 - Fetches are async and cached (60s); rendering never blocks on the network
 - The quota part follows model switches; for unsupported providers the line shows only CH + context
