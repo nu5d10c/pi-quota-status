@@ -128,6 +128,7 @@ export default function (pi) {
 	const ALL_WIDGET_KEY = "quota-all";
 	let allOpen = false;
 	let unsubInput = null;
+	let editorFocus = null; // focused component when the widget opened (pi's main editor)
 
 	function providerStatusLine(spec, entry) {
 		const text = entry ? renderStatus(spec.label, entry) : `${spec.label} checking…`;
@@ -142,6 +143,10 @@ export default function (pi) {
 
 	function openAllView(ctx) {
 		allOpen = true;
+		// pi's selector UIs (settings, /model, …) are NOT overlays — they replace the
+		// editor and steal focus. Snapshot the focused component now (the editor) so the
+		// Esc handler can tell "editor focused" from "a selector is open".
+		editorFocus = tuiRef?.focusedComponent ?? null;
 		ctx.ui.setWidget(ALL_WIDGET_KEY, (tui, theme) => {
 			tuiRef = tui;
 			return {
@@ -325,9 +330,11 @@ export default function (pi) {
 				// Esc arrives as "\x1b" (legacy) or "\x1b[27u" (kitty keyboard protocol, which pi enables)
 				const isEsc = data === "\x1b" || data === "\x1b[27u";
 				if (!allOpen || !isEsc) return undefined;
-				// never steal Esc from an open overlay (settings, selectors, confirm dialogs, …):
-				// extension input listeners run before overlay handling in the TUI pipeline
+				// never steal Esc when focus moved away from the editor (settings, /model,
+				// selectors, overlays, …) — extension input listeners run before those in
+				// the TUI pipeline, so this is our only chance to yield
 				if (tuiRef?.hasOverlay?.()) return undefined;
+				if (editorFocus && tuiRef?.focusedComponent !== editorFocus) return undefined;
 				closeAllView(lastCtx);
 				return { consume: true };
 			});
