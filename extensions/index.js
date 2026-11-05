@@ -124,6 +124,48 @@ export default function (pi) {
 	let quotaIcon = ""; // emoji marker shown before quotaText (💰)
 	let activeProviderId = null;
 
+	// all-quota widget (opened by /quota-all, closed by Esc)
+	const ALL_WIDGET_KEY = "quota-all";
+	let allOpen = false;
+	let unsubInput = null;
+
+	function providerStatusLine(spec, entry) {
+		const text = entry ? renderStatus(spec.label, entry) : `${spec.label} checking…`;
+		// renderStatus omits the provider name in the normal state — prefix it there
+		return text.startsWith(spec.label) ? text : `${spec.label}  ${text}`;
+	}
+
+	async function refreshAll(ctx) {
+		await Promise.all(Object.keys(PROVIDERS).map((id) => refresh(id, ctx)));
+		tuiRef?.requestRender();
+	}
+
+	function openAllView(ctx) {
+		allOpen = true;
+		ctx.ui.setWidget(ALL_WIDGET_KEY, (tui, theme) => {
+			tuiRef = tui;
+			return {
+				invalidate() {},
+				dispose() {},
+				render(width) {
+					const lines = Object.entries(PROVIDERS).map(([providerId, spec]) =>
+						truncateToWidth(theme.fg("dim", providerStatusLine(spec, cache.get(providerId))), width),
+					);
+					lines.push(theme.fg("muted", "esc to close"));
+					return lines;
+				},
+			};
+		});
+		void refreshAll(ctx).catch(() => {});
+	}
+
+	function closeAllView(ctx) {
+		allOpen = false;
+		try {
+			ctx.ui.setWidget(ALL_WIDGET_KEY, undefined);
+		} catch {}
+	}
+
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
 		if (cached && !force && Date.now() - cached.at < CACHE_TTL_MS) return cached;
@@ -274,9 +316,21 @@ export default function (pi) {
 	pi.on("session_start", (_event, ctx) => {
 		lastCtx = ctx;
 		stopTimer();
-		if (ctx.mode === "tui" && ctx.hasUI) mountFooter(ctx);
+		if (ctx.mode === "tui" && ctx.hasUI) {
+			mountFooter(ctx);
+			// close the all-quota widget on Esc; only consumed while it is open,
+			// so Esc keeps its normal meaning otherwise
+			unsubInput?.();
+			unsubInput = ctx.ui.onTerminalInput?.((data) => {
+				if (!allOpen || data !== "\x1b") return undefined;
+				closeAllView(lastCtx);
+				return { consume: true };
+			});
+		}
 		timer = setInterval(() => {
-			if (lastCtx) update(lastCtx).catch(() => {}); // keeps the countdown ticking
+			if (!lastCtx) return;
+			update(lastCtx).catch(() => {}); // keeps the countdown ticking
+			if (allOpen) refreshAll(lastCtx).catch(() => {}); // keeps every row fresh
 		}, REFRESH_INTERVAL_MS);
 		timer.unref?.(); // never keep the process alive just for the refresh timer
 		void update(ctx).catch(() => {});
@@ -289,20 +343,23 @@ export default function (pi) {
 
 	pi.on("session_shutdown", () => {
 		stopTimer();
+		unsubInput?.();
+		unsubInput = null;
+		allOpen = false;
 	});
 
 	pi.registerCommand("quota-all", {
-		description: "Show quota for every supported provider",
+		description: "Toggle the all-quota widget (Esc closes it)",
 		handler: async (_args, ctx) => {
-			// all fetchers run in parallel; each is cached (60s) and fails independently
-			const blocks = await Promise.all(
-				Object.entries(PROVIDERS).map(async ([providerId, spec]) => {
-					const entry = await refresh(providerId, ctx);
-					return renderDetail(spec.label, entry);
-				}),
-			);
-			ctx.ui.notify(blocks.map((b) => b.join("\n")).join("\n\n"), "info");
-			await update(ctx);
+			if (allOpen) {
+				closeAllView(ctx);
+				return;
+			}
+			if (!ctx.hasUI) {
+				ctx.ui.notify("The all-quota widget needs an interactive UI", "warning");
+				return;
+			}
+			openAllView(ctx);
 		},
 	});
 
