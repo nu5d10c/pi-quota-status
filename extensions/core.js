@@ -248,31 +248,42 @@ function padLabel(label, width) {
 	return label + " ".repeat(Math.max(0, width - w));
 }
 
+/** 用量等级 → emoji:🟢 <70% 🟡 <90% 🔴 ≥90% */
+export function loadEmoji(percent) {
+	if (!Number.isFinite(percent)) return "💰";
+	return percent >= 90 ? "🔴" : percent >= 70 ? "🟡" : "🟢";
+}
+
+/** 详情页的 emoji 用量条 */
+function barEmoji(percent) {
+	const filled = Math.max(0, Math.min(10, Math.round((percent || 0) / 10)));
+	const cell = percent >= 90 ? "🟥" : percent >= 70 ? "🟨" : "🟩";
+	return cell.repeat(filled) + "⬜".repeat(10 - filled);
+}
+
 function rowText(r, { compact = true } = {}) {
 	if (r.percent !== undefined) {
 		const countdown = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
 		if (!compact) {
-			const filled = Math.max(0, Math.min(10, Math.round((r.percent || 0) / 10)));
-			const bar = "█".repeat(filled) + "░".repeat(10 - filled);
-			const parts = [`${padLabel(r.label, 5)} ${bar} ${fmtPct(r.percent).padStart(5)}`];
+			const parts = [`${padLabel(r.label, 5)} ${barEmoji(r.percent)} ${fmtPct(r.percent).padStart(5)}`];
 			if (r.detail) parts.push(r.detail);
-			if (countdown) parts.push(`⟳${countdown}后刷新`);
+			if (countdown) parts.push(`⏳${countdown}`);
 			return parts.join("  ");
 		}
-		return `${r.label} ${fmtPct(r.percent)}${countdown ? `⟳${countdown}` : ""}`;
+		return `${r.label} ${fmtPct(r.percent)}${countdown ? ` ⏳${countdown}` : ""}`;
 	}
 	return r.detail ? `${r.label} ${r.detail}` : r.label;
 }
 
-/** 状态栏一行:GLM·max 5h 1%⟳3h12m · 周 0.4%⟳4d6h */
+/** 状态栏一行:🟢 GLM·max 5h 1% ⏳3h12m | 周 0.4% ⏳4d6h */
 export function renderStatus(label, entry) {
 	const head = label + (entry.plan ? `·${entry.plan}` : "");
-	if (entry.error) return `${head} ${entry.error}`;
-	if (entry.hint && !entry.rows?.length) return `${head} ${entry.hint}`;
-	const body = (entry.rows ?? []).map((r) => rowText(r)).join(" · ");
-	if (!body) return `${head} ${entry.hint ?? "无数据"}`;
-	const warn = (entry.rows ?? []).some((r) => Number(r.percent) >= 90) ? "⚠ " : "";
-	return `${warn}${head} ${body}`;
+	if (entry.error) return `⛔ ${head} ${entry.error}`;
+	if (entry.hint && !entry.rows?.length) return `💡 ${head} ${entry.hint}`;
+	const body = (entry.rows ?? []).map((r) => rowText(r)).join(" | ");
+	if (!body) return `💡 ${head} ${entry.hint ?? "无数据"}`;
+	const worst = Math.max(...(entry.rows ?? []).map((r) => Number(r.percent) || 0));
+	return `${loadEmoji(worst)} ${head} ${body}`;
 }
 
 /** /quota 命令的多行详情 */
@@ -280,7 +291,7 @@ export function renderDetail(label, entry) {
 	const lines = [];
 	const head = `${label}${entry.plan ? ` (${entry.plan})` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
 	lines.push(head);
-	if (entry.hint) lines.push(`  ⚠ ${entry.hint}`);
+	if (entry.hint) lines.push(`  💡 ${entry.hint}`);
 	for (const r of entry.rows ?? []) lines.push(`  ${rowText(r, { compact: false })}`);
 	if (!entry.rows?.length && !entry.hint && !entry.error) lines.push("  无数据");
 	return lines;
