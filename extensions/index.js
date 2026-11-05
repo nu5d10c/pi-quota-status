@@ -1,18 +1,20 @@
 /**
  * pi-quota-status — index.js
  *
- * pi 扩展:使用对应模型的 provider 时,在输入框上方的 widget 显示该套餐的
- * 额度与刷新倒计时;`/quota` 展开多行详情 / 收起。
+ * Pi extension: when the active model's provider matches, a widget above the
+ * editor shows that plan's quota and reset countdown; /quota expands the
+ * multi-row detail or collapses it back.
  *
- * 支持:
- *   zai                    → GLM Coding Plan 国际站(api.z.ai)
- *   zai-coding-cn          → GLM Coding Plan 国内站(open.bigmodel.cn)
- *   openai-codex           → Codex(ChatGPT 订阅,OAuth)
- *   xiaomi-token-plan-cn   → 小米 MiMo Token Plan 国内站(需控制台 Cookie)
- *   deepseek               → DeepSeek 账户余额(按量计费)
+ * Supported providers:
+ *   zai                    → GLM Coding Plan global (api.z.ai)
+ *   zai-coding-cn          → GLM Coding Plan China (open.bigmodel.cn)
+ *   openai-codex           → Codex (ChatGPT subscription, OAuth)
+ *   xiaomi-token-plan-cn   → Xiaomi MiMo Token Plan China (console cookie)
+ *   deepseek               → DeepSeek account balance (pay-as-you-go)
  *
- * key 全部取自 pi 自己的凭据存储(ctx.modelRegistry.getProviderAuth),
- * 每个 key 只发往其所属厂商的额度接口,不落日志、不进模型上下文。
+ * All keys come from pi's own credential store (ctx.modelRegistry.getProviderAuth);
+ * each key is sent only to its own issuer's quota endpoint — never logged,
+ * never entered into model context.
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
@@ -34,21 +36,21 @@ const PROVIDERS = {
 	zai: {
 		label: "GLM",
 		fetch: (auth) => {
-			if (!auth.key) return { rows: [], hint: "未配置 API key(/login zai 或环境变量)" };
+			if (!auth.key) return { rows: [], hint: "no API key configured (/login zai or env)" };
 			return fetchGlm(auth.key, { host: "api.z.ai", scheme: "bearer" });
 		},
 	},
 	"zai-coding-cn": {
 		label: "GLM-CN",
 		fetch: (auth) => {
-			if (!auth.key) return { rows: [], hint: "未配置 API key" };
+			if (!auth.key) return { rows: [], hint: "no API key configured" };
 			return fetchGlm(auth.key, { host: "open.bigmodel.cn", scheme: "raw" });
 		},
 	},
 	"openai-codex": {
 		label: "Codex",
 		fetch: (auth) => {
-			if (!auth.token) return { rows: [], hint: "未登录:运行 /login openai-codex" };
+			if (!auth.token) return { rows: [], hint: "not logged in: run /login openai-codex" };
 			return fetchCodex(auth.token);
 		},
 	},
@@ -63,16 +65,17 @@ const PROVIDERS = {
 	deepseek: {
 		label: "DeepSeek",
 		fetch: (auth) => {
-			if (!auth.key) return { rows: [], hint: "未配置 API key" };
+			if (!auth.key) return { rows: [], hint: "no API key configured" };
 			return fetchDeepseek(auth.key);
 		},
 	},
 };
 
 /**
- * 从 pi 凭据存储解析认证。兼容多种返回形状:
+ * Resolve auth from pi's credential store. Handles several result shapes:
  *   { source, auth: { apiKey } }          — API key
- *   { source: "OAuth", auth: { apiKey | headers } } — OAuth,token 在 apiKey 或 headers.authorization
+ *   { source: "OAuth", auth: { apiKey | headers } } — OAuth; token lives in
+ *   apiKey or in headers.authorization
  */
 async function resolveAuth(ctx, providerId) {
 	let result;
@@ -103,10 +106,10 @@ export default function (pi) {
 	let timer = null;
 	let lastCtx = null;
 
-	// widget 状态
+	// widget state
 	let mounted = false;
 	let currentProvider = null; // { providerId, spec }
-	let entryRef = null; // 当前 provider 的最新 entry
+	let entryRef = null; // latest entry for the current provider
 	let expanded = false;
 	let tuiRef = null;
 
@@ -118,7 +121,7 @@ export default function (pi) {
 			return {
 				render(width) {
 					const spec = currentProvider?.spec;
-					if (!spec) return []; // 不支持的 provider:零高度,不占空间
+					if (!spec) return []; // unsupported provider: zero height, takes no space
 					return renderWidget(spec.label, entryRef, { expanded }, theme).map((line) =>
 						truncateToWidth(line, width),
 					);
@@ -164,12 +167,12 @@ export default function (pi) {
 			return;
 		}
 		mountWidget(ctx);
-		if (currentProvider?.providerId !== providerId) expanded = false; // 切模型时收起
+		if (currentProvider?.providerId !== providerId) expanded = false; // collapse on model switch
 		currentProvider = { providerId, spec };
 		try {
 			entryRef = await refresh(providerId, ctx, force);
 		} catch {
-			// refresh 不应抛出;保险起见保留上一个 entry
+			// refresh never rejects; keep the previous entry just in case
 		}
 		tuiRef?.requestRender();
 	}
@@ -185,7 +188,7 @@ export default function (pi) {
 		lastCtx = ctx;
 		stopTimer();
 		timer = setInterval(() => {
-			if (lastCtx) update(lastCtx); // 定时刷新,让刷新倒计时保持走动
+			if (lastCtx) update(lastCtx); // periodic refresh keeps the countdown ticking
 		}, REFRESH_INTERVAL_MS);
 		await update(ctx);
 	});
@@ -200,13 +203,13 @@ export default function (pi) {
 	});
 
 	pi.registerCommand("quota", {
-		description: "展开/收起套餐额度详情(同时强制刷新)",
+		description: "Toggle quota detail (also force-refreshes)",
 		handler: async (_args, ctx) => {
 			const providerId = ctx.model?.provider;
 			const spec = providerId ? PROVIDERS[providerId] : undefined;
 			if (!spec) {
 				ctx.ui.notify(
-					`当前模型 ${ctx.model?.provider ?? "?"} 不在监控范围\n支持:zai · zai-coding-cn · openai-codex · xiaomi-token-plan-cn · deepseek`,
+					`Current model ${ctx.model?.provider ?? "?"} is not monitored\nSupported: zai · zai-coding-cn · openai-codex · xiaomi-token-plan-cn · deepseek`,
 					"warning",
 				);
 				return;

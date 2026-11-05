@@ -1,22 +1,24 @@
 /**
  * pi-quota-status — core.js
  *
- * 各家 Coding Plan / 余额接口的请求与格式化逻辑。
- * 纯函数模块,不 import pi 的任何内容,可独立测试。
+ * Request + formatting logic for each provider's coding plan / balance API.
+ * Pure module: imports nothing from pi, testable standalone.
  *
- * 契约(2026-02 实测 / 对照 pi-usage-meters、pi-toolkit、OmniRoute 等实现):
- * - GLM 国际站  GET https://api.z.ai/api/monitor/usage/quota/limit        (Authorization: Bearer <key>)
- * - GLM 国内站  GET https://open.bigmodel.cn/api/monitor/usage/quota/limit (Authorization: <key> 裸 key)
+ * Endpoint contracts (verified 2026-02, cross-checked against pi-usage-meters,
+ * pi-toolkit, OmniRoute and others):
+ * - GLM global   GET https://api.z.ai/api/monitor/usage/quota/limit        (Authorization: Bearer <key>)
+ * - GLM China    GET https://open.bigmodel.cn/api/monitor/usage/quota/limit (Authorization: <key>, raw)
  *     → { success, data: { level, limits: [{ unit, number, usage, currentValue, remaining, percentage, nextResetTime }] } }
- * - Codex       GET https://chatgpt.com/backend-api/wham/usage             (OAuth Bearer + ChatGPT-Account-Id)
+ * - Codex        GET https://chatgpt.com/backend-api/wham/usage             (OAuth Bearer + ChatGPT-Account-Id)
  *     → { plan_type, rate_limit: { primary_window, secondary_window: { limit_window_seconds, used_percent, reset_at } }, credits }
- * - MiMo CN     GET https://platform.xiaomimimo.com/api/v1/tokenPlan/usage (控制台会话 Cookie,tp- 推理 key 无效)
- *               GET https://platform.xiaomimimo.com/api/v1/tokenPlan/detail → planName + currentPeriodEnd
+ * - MiMo CN      GET https://platform.xiaomimimo.com/api/v1/tokenPlan/usage (console session cookie; tp- inference keys are rejected)
+ *                GET https://platform.xiaomimimo.com/api/v1/tokenPlan/detail → planName + currentPeriodEnd
  *     → { code: 0, data: { usage: { items: [{ name, used, limit, percent }] }, monthUsage: { items: [...] } } }
- * - DeepSeek    GET https://api.deepseek.com/user/balance                  (Bearer,按量计费,只有余额)
+ * - DeepSeek     GET https://api.deepseek.com/user/balance                  (Bearer; pay-as-you-go, balance only)
  *     → { is_available, balance_infos: [{ currency, total_balance, granted_balance, topped_up_balance }] }
  *
- * 这些接口均未公开文档化,可能随时变动;每个请求独立失败,不互相影响。
+ * These endpoints are undocumented and may change at any time. Each request
+ * fails independently and never affects the others.
  */
 
 export const TIMEOUT_MS = 8000;
@@ -30,7 +32,7 @@ async function getJson(url, headers = {}, timeoutMs = TIMEOUT_MS) {
 	try {
 		const res = await fetch(url, {
 			signal: ctrl.signal,
-			redirect: "error", // 额度接口不应重定向;绝不把凭据带到第二个主机
+			redirect: "error", // a quota endpoint never redirects; never carry a credential to a second host
 			headers: { Accept: "application/json", ...headers },
 		});
 		if (!res.ok) {
@@ -39,7 +41,7 @@ async function getJson(url, headers = {}, timeoutMs = TIMEOUT_MS) {
 			throw err;
 		}
 		const text = await res.text();
-		if (text.length > MAX_BYTES) throw new Error("响应过大");
+		if (text.length > MAX_BYTES) throw new Error("response too large");
 		return JSON.parse(text);
 	} finally {
 		clearTimeout(timer);
@@ -54,7 +56,7 @@ async function getJsonOptional(url, headers = {}) {
 	}
 }
 
-// ─── 格式化 ──────────────────────────────────────────────────────────────────
+// ─── Formatting ──────────────────────────────────────────────────────────────
 
 export function fmtInt(n) {
 	return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -66,7 +68,7 @@ export function fmtPct(p) {
 	return `${v}%`;
 }
 
-/** 毫秒 → "3h12m" / "45m" / "4d6h" / "<1m" */
+/** Milliseconds → "3h12m" / "45m" / "4d6h" / "<1m" */
 export function fmtCountdown(ms) {
 	if (!Number.isFinite(ms) || ms <= 0) return null;
 	const m = Math.floor(ms / 60000);
@@ -80,13 +82,13 @@ export function fmtCountdown(ms) {
 }
 
 /**
- * 结果形状(所有 fetcher 统一):
+ * Unified result shape for all fetchers:
  * {
- *   plan?:  string       — 套餐名 / 等级
+ *   plan?:  string       — plan name / level
  *   rows:   [{ label, percent?, used?, limit?, detail?, resetAt? }]
- *   hint?:  string       — 拿不到数据时的提示(团队席位、缺少 Cookie 等)
+ *   hint?:  string       — shown when data cannot be fetched (team seat, missing cookie, ...)
  * }
- * resetAt 为 epoch 毫秒;percent 为 0–100 的已用百分比。
+ * resetAt is epoch milliseconds; percent is used-percentage 0–100.
  */
 
 function row({ label, percent, used, limit, resetAt }) {
@@ -97,15 +99,16 @@ function row({ label, percent, used, limit, resetAt }) {
 	return { label, percent: Number.isFinite(percent) ? percent : undefined, detail, resetAt: resetAt || undefined };
 }
 
-// ─── GLM(z.ai 国际站 / open.bigmodel.cn 国内站)─────────────────────────────
+// ─── GLM (api.z.ai global / open.bigmodel.cn China) ─────────────────────────
 
-const GLM_UNITS = { 1: "min", 3: "h", 4: "天", 6: "周", 7: "月" };
+const GLM_UNITS = { 1: "min", 3: "h", 4: "d", 6: "7d", 7: "mo" };
 
 function glmWindowLabel(limit) {
 	const n = Number(limit?.number) || 1;
 	const u = GLM_UNITS[limit?.unit] ?? `unit${limit?.unit}`;
-	// 1 周 / 1 天 / 1 月省略数字,5h 保留
-	return n === 1 && !/\d/.test(u) ? u : `${n}${u}`;
+	// unit labels that already embed a number ("7d") are used verbatim;
+	// plain units compose with the count (5h, 1d, 30min)
+	return /\d/.test(u) ? u : `${n}${u}`;
 }
 
 export async function fetchGlm(key, { host = "api.z.ai", scheme = "bearer" } = {}) {
@@ -113,14 +116,14 @@ export async function fetchGlm(key, { host = "api.z.ai", scheme = "bearer" } = {
 		Authorization: scheme === "bearer" ? `Bearer ${key}` : key,
 	});
 	if (data && data.success === false) {
-		const err = new Error(String(data.msg || "接口返回失败"));
+		const err = new Error(String(data.msg || "request failed"));
 		err.noPlan = /coding plan/i.test(String(data.msg ?? ""));
 		throw err;
 	}
 	const limits = data?.data?.limits;
 	if (!Array.isArray(limits) || limits.length === 0) {
-		// 团队席位需要组织 ID 才能查询,个人套餐不会走到这里
-		return { plan: data?.data?.level, rows: [], hint: "团队席位或无套餐数据(缺少组织 ID,暂无法查询)" };
+		// team seats need an organization ID to query; personal plans never land here
+		return { plan: data?.data?.level, rows: [], hint: "team seat or no plan data (org ID required, not supported)" };
 	}
 	return {
 		plan: data?.data?.level,
@@ -136,7 +139,7 @@ export async function fetchGlm(key, { host = "api.z.ai", scheme = "bearer" } = {
 	};
 }
 
-// ─── Codex(ChatGPT 订阅)────────────────────────────────────────────────────
+// ─── Codex (ChatGPT subscription) ────────────────────────────────────────────
 
 export function codexAccountId(token) {
 	try {
@@ -148,10 +151,10 @@ export function codexAccountId(token) {
 }
 
 function codexWindowLabel(seconds) {
-	if (seconds >= 17000 && seconds <= 19000) return "5小时";
-	if (seconds >= 580000 && seconds <= 620000) return "周";
+	if (seconds >= 17000 && seconds <= 19000) return "5h";
+	if (seconds >= 580000 && seconds <= 620000) return "7d";
 	if (seconds > 0) return fmtCountdown(seconds * 1000) || `${seconds}s`;
-	return "窗口";
+	return "window";
 }
 
 export async function fetchCodex(token) {
@@ -174,15 +177,15 @@ export async function fetchCodex(token) {
 	if (credits?.has_credits === true && Number.isFinite(Number(credits.balance))) {
 		rows.push({ label: "Credits", detail: `${Number(credits.balance)}`, resetAt: undefined });
 	}
-	if (!rows.length) return { plan: usage?.plan_type, rows: [], hint: "未返回额度窗口" };
+	if (!rows.length) return { plan: usage?.plan_type, rows: [], hint: "no quota windows returned" };
 	return { plan: usage?.plan_type, rows };
 }
 
-// ─── 小米 MiMo Token Plan(仅国内;控制台 Cookie 认证)────────────────────────
+// ─── Xiaomi MiMo Token Plan (China only; console-cookie auth) ───────────────
 
 const MIMO_BASE = "https://platform.xiaomimimo.com/api/v1";
 
-/** 控制台返回的 "YYYY-MM-DD HH:mm:ss" 视为 UTC 解析 */
+/** The console returns naive "YYYY-MM-DD HH:mm:ss" wall time; parse as UTC. */
 export function parseMimoTime(value) {
 	if (typeof value !== "string") return undefined;
 	const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(value.trim());
@@ -192,7 +195,7 @@ export function parseMimoTime(value) {
 	return Number.isFinite(ts) ? ts : undefined;
 }
 
-export const MIMO_COOKIE_HINT = "需控制台 Cookie:设置 XIAOMI_MIMO_CONSOLE_COOKIE(tp- 推理 key 无法查询)";
+export const MIMO_COOKIE_HINT = "needs a console cookie: set XIAOMI_MIMO_CONSOLE_COOKIE (tp- inference keys cannot query usage)";
 
 export async function fetchMimo(cookie) {
 	const headers = { Cookie: cookie };
@@ -201,8 +204,8 @@ export async function fetchMimo(cookie) {
 		getJsonOptional(`${MIMO_BASE}/tokenPlan/detail`, headers),
 	]);
 	if (usage?.code !== 0) {
-		const err = new Error(String(usage?.message || "接口返回失败"));
-		err.httpStatus = 401; // Cookie 失效时按鉴权失败提示
+		const err = new Error(String(usage?.message || "request failed"));
+		err.httpStatus = 401; // an expired cookie reports as an auth failure
 		throw err;
 	}
 	const find = (list, name) => (Array.isArray(list) ? list : []).find((i) => i?.name === name);
@@ -214,15 +217,15 @@ export async function fetchMimo(cookie) {
 	if (plan) rows.push(row({ label: "Plan", percent: Number(plan.percent), used: Number(plan.used), limit: Number(plan.limit) }));
 	const comp = find(planItems, "compensation_total_token");
 	if (comp && Number(comp.limit) > 0)
-		rows.push(row({ label: "补偿", percent: Number(comp.percent), used: Number(comp.used), limit: Number(comp.limit) }));
+		rows.push(row({ label: "Bonus", percent: Number(comp.percent), used: Number(comp.used), limit: Number(comp.limit) }));
 	const month = find(monthItems, "month_total_token");
 	if (month)
-		rows.push(row({ label: "月", percent: Number(month.percent), used: Number(month.used), limit: Number(month.limit), resetAt: periodEnd }));
-	if (!rows.length) return { plan: detail?.data?.planName, rows: [], hint: "未返回用量数据" };
+		rows.push(row({ label: "mo", percent: Number(month.percent), used: Number(month.used), limit: Number(month.limit), resetAt: periodEnd }));
+	if (!rows.length) return { plan: detail?.data?.planName, rows: [], hint: "no usage rows returned" };
 	return { plan: detail?.data?.planName, rows };
 }
 
-// ─── DeepSeek(按量计费余额)──────────────────────────────────────────────────
+// ─── DeepSeek (pay-as-you-go balance) ────────────────────────────────────────
 
 const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$", EUR: "€", GBP: "£", SGD: "S$", HKD: "HK$" };
 
@@ -236,30 +239,30 @@ export async function fetchDeepseek(key) {
 			detail: Number.isFinite(n) ? fmtInt(n) : String(bi.total_balance ?? "?"),
 		};
 	});
-	if (!rows.length) return { rows: [], hint: "未返回余额" };
+	if (!rows.length) return { rows: [], hint: "no balance returned" };
 	return { rows };
 }
 
-// ─── 渲染 ────────────────────────────────────────────────────────────────────
+// ─── Rendering ───────────────────────────────────────────────────────────────
 
-/** 按可见宽度补空格(CJK 记 2 列),让详情行对齐 */
+/** Pad to a visible width (CJK counts as 2 columns) so detail rows align. */
 function padLabel(label, width) {
 	const w = [...label].reduce((a, c) => a + (c.codePointAt(0) > 0x2e7f ? 2 : 1), 0);
 	return label + " ".repeat(Math.max(0, width - w));
 }
 
-/** 用量等级 → 主题色名 */
+/** Usage level → theme color name. */
 export function levelColor(percent) {
 	return percent >= 90 ? "error" : percent >= 70 ? "warning" : "success";
 }
 
-/** 用量等级 → emoji:🟢 <70% 🟡 <90% 🔴 ≥90% */
+/** Usage level → emoji: 🟢 <70% 🟡 <90% 🔴 ≥90% */
 export function loadEmoji(percent) {
 	if (!Number.isFinite(percent)) return "💰";
 	return percent >= 90 ? "🔴" : percent >= 70 ? "🟡" : "🟢";
 }
 
-/** 详情页的 emoji 用量条 */
+/** Emoji meter for the detail rows. */
 function barEmoji(percent) {
 	const filled = Math.max(0, Math.min(10, Math.round((percent || 0) / 10)));
 	const cell = percent >= 90 ? "🟥" : percent >= 70 ? "🟨" : "🟩";
@@ -280,23 +283,23 @@ function rowText(r, { compact = true } = {}) {
 	return r.detail ? `${r.label} ${r.detail}` : r.label;
 }
 
-/** 状态栏一行:🟢 GLM·max 5h 1% ⏳3h12m | 周 0.4% ⏳4d6h */
+/** One status line: 🟢 GLM·max 5h 1% ⏳3h12m | week 0.4% ⏳4d6h */
 export function renderStatus(label, entry) {
 	const head = label + (entry.plan ? `·${entry.plan}` : "");
 	if (entry.error) return `⛔ ${head} ${entry.error}`;
 	if (entry.hint && !entry.rows?.length) return `💡 ${head} ${entry.hint}`;
 	const body = (entry.rows ?? []).map((r) => rowText(r)).join(" | ");
-	if (!body) return `💡 ${head} ${entry.hint ?? "无数据"}`;
+	if (!body) return `💡 ${head} ${entry.hint ?? "no data"}`;
 	const worst = Math.max(...(entry.rows ?? []).map((r) => Number(r.percent) || 0));
 	return `${loadEmoji(worst)} ${head} ${body}`;
 }
 
 /**
- * widget 渲染(主题配色)。compact 单行;expanded 展开多行。
- * 返回带 ANSI 的行,由调用方用 truncateToWidth 截断。
+ * Widget rendering (theme colors). Compact = one line; expanded = multi-row.
+ * Returns ANSI-bearing lines; the caller truncates with truncateToWidth.
  */
 export function renderWidget(label, entry, { expanded = false } = {}, theme) {
-	if (!entry) return [theme.fg("dim", `${label} 查询中…`)];
+	if (!entry) return [theme.fg("dim", `${label} checking…`)];
 	const head = label + (entry.plan ? `·${entry.plan}` : "");
 	if (entry.error) return [theme.fg("error", `⛔ ${head} ${entry.error}`)];
 	if (entry.hint && (!entry.rows?.length || !expanded))
@@ -340,22 +343,22 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 	return lines;
 }
 
-/** /quota 命令的多行详情 */
+/** Multi-line detail (kept for tests / alternative UIs). */
 export function renderDetail(label, entry) {
 	const lines = [];
 	const head = `${label}${entry.plan ? ` (${entry.plan})` : ""}${entry.error ? ` — ${entry.error}` : ""}`;
 	lines.push(head);
 	if (entry.hint) lines.push(`  💡 ${entry.hint}`);
 	for (const r of entry.rows ?? []) lines.push(`  ${rowText(r, { compact: false })}`);
-	if (!entry.rows?.length && !entry.hint && !entry.error) lines.push("  无数据");
+	if (!entry.rows?.length && !entry.hint && !entry.error) lines.push("  no data");
 	return lines;
 }
 
-/** 错误 → 人类可读短语 */
+/** Error → short human-readable phrase. */
 export function describeError(err) {
-	if (err?.name === "AbortError") return "超时";
-	if (err?.httpStatus === 401 || err?.httpStatus === 403) return "鉴权失败(key 无效或过期)";
-	if (err?.noPlan) return "无 Coding Plan 套餐(按量计费)";
-	const msg = String(err?.message ?? "未知错误").slice(0, 40);
+	if (err?.name === "AbortError") return "timed out";
+	if (err?.httpStatus === 401 || err?.httpStatus === 403) return "auth failed (invalid or expired key)";
+	if (err?.noPlan) return "no coding plan (pay-as-you-go)";
+	const msg = String(err?.message ?? "unknown error").slice(0, 40);
 	return msg;
 }
