@@ -11,7 +11,7 @@ Emoji markers: 📁 cwd · ⚡ cache hit rate · 🌡️ context percent (dim �
 💰 quota — plan windows show `time (countdown)`, balance shows a plain number · 🧠 model:thinking
 (provider shown only when >1 provider available).
 - `/quota` shows the multi-row detail for the **current model's** provider (emoji meter, used/total, reset countdown) and force-refreshes
-- `/quota-all` shows **every supported provider** at once — all fetchers run in parallel, unconfigured ones show a hint (60s cache)
+- `/quota-all` toggles a **persistent widget** listing every supported provider — all fetchers run in parallel, unconfigured ones show a hint (60s cache); press **Esc** to close it (Esc keeps its normal meaning while the widget is closed)
 - Fetches are async and cached (60s); rendering never blocks on the network
 - The quota part follows model switches; for unsupported providers the line shows only CH + context
 - Auto-refreshes every 60s; one provider failing never affects the others
