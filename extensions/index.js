@@ -1,9 +1,9 @@
 /**
  * pi-quota-status — index.js
  *
- * Pi extension: when the active model's provider matches, a widget above the
- * editor shows that plan's quota and reset countdown; /quota expands the
- * multi-row detail or collapses it back.
+ * Pi extension: when the active model's provider matches, its plan quota and
+ * reset countdown are attached to the built-in footer's extension status line
+ * (ctx.ui.setStatus). /quota shows the multi-row detail and force-refreshes.
  *
  * Supported providers:
  *   zai                    → GLM Coding Plan global (api.z.ai)
@@ -17,7 +17,6 @@
  * never entered into model context.
  */
 
-import { truncateToWidth } from "@earendil-works/pi-tui";
 import {
 	describeError,
 	fetchCodex,
@@ -25,10 +24,11 @@ import {
 	fetchGlm,
 	fetchMimo,
 	MIMO_COOKIE_HINT,
-	renderWidget,
+	renderDetail,
+	renderStatus,
 } from "./core.js";
 
-const WIDGET_KEY = "quota";
+const STATUS_KEY = "quota";
 const CACHE_TTL_MS = 60_000;
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -106,30 +106,6 @@ export default function (pi) {
 	let timer = null;
 	let lastCtx = null;
 
-	// widget state
-	let mounted = false;
-	let currentProvider = null; // { providerId, spec }
-	let entryRef = null; // latest entry for the current provider
-	let expanded = false;
-	let tuiRef = null;
-
-	function mountWidget(ctx) {
-		if (mounted) return;
-		mounted = true;
-		ctx.ui.setWidget(WIDGET_KEY, (tui, theme) => {
-			tuiRef = tui;
-			return {
-				render(width) {
-					const spec = currentProvider?.spec;
-					if (!spec) return []; // unsupported provider: zero height, takes no space
-					return renderWidget(spec.label, entryRef, { expanded }, theme).map((line) =>
-						truncateToWidth(line, width),
-					);
-				},
-			};
-		});
-	}
-
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
 		if (cached && !force && Date.now() - cached.at < CACHE_TTL_MS) return cached;
@@ -161,20 +137,15 @@ export default function (pi) {
 		const providerId = ctx.model?.provider;
 		const spec = providerId ? PROVIDERS[providerId] : undefined;
 		if (!spec) {
-			currentProvider = null;
-			entryRef = null;
-			tuiRef?.requestRender();
+			ctx.ui.setStatus(STATUS_KEY, undefined); // unsupported provider: clear
 			return;
 		}
-		mountWidget(ctx);
-		if (currentProvider?.providerId !== providerId) expanded = false; // collapse on model switch
-		currentProvider = { providerId, spec };
 		try {
-			entryRef = await refresh(providerId, ctx, force);
+			const entry = await refresh(providerId, ctx, force);
+			ctx.ui.setStatus(STATUS_KEY, renderStatus(spec.label, entry));
 		} catch {
-			// refresh never rejects; keep the previous entry just in case
+			// refresh never rejects; leave the previous status just in case
 		}
-		tuiRef?.requestRender();
 	}
 
 	function stopTimer() {
@@ -203,7 +174,7 @@ export default function (pi) {
 	});
 
 	pi.registerCommand("quota", {
-		description: "Toggle quota detail (also force-refreshes)",
+		description: "Show quota detail (also force-refreshes)",
 		handler: async (_args, ctx) => {
 			const providerId = ctx.model?.provider;
 			const spec = providerId ? PROVIDERS[providerId] : undefined;
@@ -214,7 +185,8 @@ export default function (pi) {
 				);
 				return;
 			}
-			expanded = !expanded;
+			const entry = await refresh(providerId, ctx, true);
+			ctx.ui.notify(renderDetail(spec.label, entry).join("\n"), entry.error ? "warning" : "info");
 			await update(ctx, { force: true });
 		},
 	});

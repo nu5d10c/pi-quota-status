@@ -287,23 +287,30 @@ function rowText(r, { compact = true } = {}) {
 		if (!compact) {
 			const parts = [`${padLabel(r.label, 5)} ${barEmoji(r.percent)} ${fmtPct(r.percent).padStart(5)}`];
 			if (r.detail) parts.push(r.detail);
-			if (countdown) parts.push(`⏳${countdown}`);
+			if (countdown) parts.push(countdown);
 			return parts.join("  ");
 		}
-		return `${r.label} ${fmtPct(r.percent)}${countdown ? ` ⏳${countdown}` : ""}`;
+		return `${r.label} ${fmtPct(r.percent)}${countdown ? ` ${countdown}` : ""}`;
 	}
 	return r.detail ? `${r.label} ${r.detail}` : r.label;
 }
 
-/** One status line: 🟢 GLM·max 5h 1% ⏳3h12m | week 0.4% ⏳4d6h */
+/**
+ * 状态栏一行(无 ANSI)。与 renderWidget compact 同语义:
+ * 🟢🟡🔴 = plan 用量等级;💰 = 余额计费;正常态不重复 provider 名。
+ */
 export function renderStatus(label, entry) {
+	if (!entry) return `${label} checking…`;
 	const head = label + (entry.plan ? `·${entry.plan}` : "");
 	if (entry.error) return `⛔ ${head} ${entry.error}`;
 	if (entry.hint && !entry.rows?.length) return `💡 ${head} ${entry.hint}`;
 	const body = (entry.rows ?? []).map((r) => rowText(r)).join(" | ");
 	if (!body) return `💡 ${head} ${entry.hint ?? "no data"}`;
-	const worst = Math.max(...(entry.rows ?? []).map((r) => Number(r.percent) || 0));
-	return `${loadEmoji(worst)} ${head} ${body}`;
+	const rows = entry.rows ?? [];
+	const hasUsage = rows.some((r) => r.percent !== undefined);
+	const icon = hasUsage ? loadEmoji(Math.max(...rows.map((r) => Number(r.percent) || 0))) : "💰";
+	const plan = entry.plan ?? "";
+	return `${icon} ${[plan, body].filter(Boolean).join(" ")}`;
 }
 
 /**
