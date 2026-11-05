@@ -173,7 +173,13 @@ export default function (pi) {
 				invalidate() {},
 				dispose() {},
 				render(width) {
-					// left side, in order: cache hit rate, context usage, plan quota
+					// line 1: cwd (~-abbreviated), like the built-in footer
+					let cwd = ctx.sessionManager.getCwd?.() || ctx.cwd || "";
+					const home = process.env.HOME || process.env.USERPROFILE || "";
+					if (home && (cwd === home || cwd.startsWith(home + "/"))) cwd = "~" + cwd.slice(home.length);
+					const pwdLine = truncateToWidth(theme.fg("dim", cwd), width, theme.fg("dim", "…"));
+
+					// line 2 left side, in order: cache hit rate, context usage, plan quota
 					const parts = [];
 
 					// CH — prompt cache hit rate from the latest assistant message
@@ -237,7 +243,7 @@ export default function (pi) {
 							line = truncateToWidth(left, width, theme.fg("dim", "…"));
 						}
 					}
-					return [line];
+					return [pwdLine, line];
 				},
 			};
 		});
