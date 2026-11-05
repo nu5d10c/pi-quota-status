@@ -1,11 +1,12 @@
 /**
  * pi-quota-status — index.js
  *
- * Pi extension: when the active model's provider matches, that plan's quota and
- * reset countdown are rendered INSIDE the default footer's stats line (injected
- * into the gap between the token stats and the right-aligned model name) — no
- * separate line. Uses ctx.ui.setFooter() with pi's own exported
- * FooterComponent, so pwd/stats/model rendering stays identical to stock.
+ * Pi extension: replaces the default footer with a single-line version showing
+ * ONLY the selected elements — cache hit rate, context usage, plan quota —
+ * with the model id right-aligned on the same line.
+ *
+ * Line layout:
+ *   CH95.3%  12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          glm-5
  *
  * Fetches are fully async and never block rendering: the footer renders from a
  * cached snapshot; network updates land on the next frame via requestRender().
@@ -22,7 +23,6 @@
  * never entered into model context.
  */
 
-import { FooterComponent } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	describeError,
@@ -106,25 +106,12 @@ async function resolveAuth(ctx, providerId) {
 	return { key: key || token, token, source: result?.source ?? auth.type };
 }
 
-/**
- * Inject the quota text into the default stats line's padding gap:
- *   `↑1.2k ↓456 $0.01 12%/200k  <quota>  ...padding...  (zai) glm-5`
- *
- * The built-in footer dims the remainder as ESC[2m + (padding + right side)
- * + ESC[22;39m, and the padding is the only run of 2+ spaces. We re-enter that
- * structure around the injected text so the surrounding dim stays intact.
- * Returns the line unchanged when no wide-enough gap exists.
- */
-function injectIntoStatsLine(line, quotaText) {
-	const match = /\x1b\[2m( +)/.exec(line);
-	if (!match) return null;
-	const gapStart = match.index + match[0].length - match[1].length; // first padding space
-	const gapLen = match[1].length;
-	const width = visibleWidth(quotaText);
-	const rem = gapLen - width - 2; // two spaces before the text, rest goes after
-	if (rem < 2) return null;
-	// inserted inside the open dim segment, so the text inherits the dim style
-	return line.slice(0, gapStart) + "  " + quotaText + " ".repeat(rem) + line.slice(gapStart + gapLen);
+/** Compact token count: 950 → "950", 28,000 → "28k", 1,400,000 → "1.4M" */
+function fmtTokens(n) {
+	if (!Number.isFinite(n) || n <= 0) return "";
+	if (n < 1000) return String(n);
+	if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+	return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
 export default function (pi) {
@@ -180,37 +167,69 @@ export default function (pi) {
 	}
 
 	function mountFooter(ctx) {
-		ctx.ui.setFooter((tui, theme, footerData) => {
+		ctx.ui.setFooter((tui, theme, _footerData) => {
 			tuiRef = tui;
-			// FooterComponent needs a session shape; shim one over the extension ctx.
-			// Getters keep model / context usage fresh on every render.
-			const shim = {
-				get state() {
-					return { model: ctx.model, thinkingLevel: ctx.thinkingLevel };
-				},
-				get model() {
-					return ctx.model;
-				},
-				sessionManager: ctx.sessionManager,
-				getContextUsage: () => ctx.getContextUsage(),
-				routedModel: undefined,
-				modelRuntime: { isUsingSubscription: () => false },
-			};
 			return {
 				invalidate() {},
 				dispose() {},
 				render(width) {
-					const inner = new FooterComponent(shim, footerData).render(width);
-					if (quotaText) {
-						const injected = injectIntoStatsLine(inner[1] ?? "", quotaText);
-						if (injected) {
-							inner[1] = truncateToWidth(injected, width);
-							return inner;
+					// left side, in order: cache hit rate, context usage, plan quota
+					const parts = [];
+
+					// CH — prompt cache hit rate from the latest assistant message
+					let latestHit;
+					for (const e of ctx.sessionManager.getEntries()) {
+						if (e.type === "message" && e.message.role === "assistant" && e.message.usage) {
+							const u = e.message.usage;
+							const denom = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+							if (denom > 0) latestHit = ((u.cacheRead || 0) / denom) * 100;
 						}
-						// no room in the gap: degrade to its own line
-						inner.push(truncateToWidth(quotaText, width));
 					}
-					return inner;
+					if (latestHit !== undefined) parts.push(theme.fg("dim", `CH${latestHit.toFixed(1)}%`));
+
+					// context usage — colorized by threshold like the built-in footer
+					const cu = ctx.getContextUsage();
+					if (cu?.percent != null) {
+						const text = `${cu.percent.toFixed(1)}%/${fmtTokens(cu.contextWindow)}`;
+						parts.push(
+							cu.percent > 90
+								? theme.fg("error", text)
+								: cu.percent > 70
+									? theme.fg("warning", text)
+									: theme.fg("dim", text),
+						);
+					}
+
+					// plan quota / balance
+					if (quotaText) parts.push(theme.fg("dim", quotaText));
+
+					// right side: model id
+					const right = ctx.model?.id ? theme.fg("dim", ctx.model.id) : "";
+					const rightWidth = ctx.model?.id ? visibleWidth(ctx.model.id) : 0;
+
+					const sep = theme.fg("dim", "  ");
+					let left = parts.join(sep);
+					const leftWidth = parts.reduce((a, p) => a + visibleWidth(p), 0) + Math.max(0, parts.length - 1) * 2;
+
+					const minPadding = 2;
+					let line;
+					if (!parts.length) {
+						line = right;
+					} else if (leftWidth + minPadding + rightWidth <= width) {
+						const pad = " ".repeat(width - leftWidth - rightWidth);
+						line = left + pad + right;
+					} else {
+						// too wide: truncate the left side, keep the model name
+						const avail = width - rightWidth - minPadding;
+						if (avail > 0) {
+							left = truncateToWidth(left, avail, theme.fg("dim", "…"));
+							const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - rightWidth));
+							line = left + pad + right;
+						} else {
+							line = truncateToWidth(left, width, theme.fg("dim", "…"));
+						}
+					}
+					return [line];
 				},
 			};
 		});
