@@ -4,11 +4,12 @@
 
 ```
 📁 ~/Github/pi-quota-status
-⚡CH95.3%  🧠12.3%/200k  🟢 5h 1% (3h12m) | 7d 0.4% (4d6h)          🤖 (zai) glm-5 • high
+⚡95.3%  📶12.3%/200k  💰 5h 1% (3h12m) | 7d 0.4% (4d6h)          🧠 (zai) glm-5 • high
 ```
 
-Emoji markers: 📁 cwd · ⚡ cache hit rate · 🧠 context (dim → warning >70% → error >90%) ·
-quota: 🟢🟡🔴 plan usage level / 💰 balance · 🤖 model (provider shown only when >1 provider available).
+Emoji markers: 📁 cwd · ⚡ cache hit rate · 📶 context (dim → warning >70% → error >90%) ·
+💰 quota — plan windows show `time (countdown)`, balance shows a plain number · 🧠 model
+(provider shown only when >1 provider available).
 - `/quota` shows the multi-row detail (emoji meter, used/total, reset countdown) and force-refreshes
 - Fetches are async and cached (60s); rendering never blocks on the network
 - The quota part follows model switches; for unsupported providers the line shows only CH + context
