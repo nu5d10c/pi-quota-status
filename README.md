@@ -23,7 +23,7 @@ Emoji markers: 📁 cwd · ⚡ cache hit rate · 🌡️ context percent (dim �
 | `zai` — GLM global | 5h / weekly window usage + reset countdown + plan level | API key from pi's credential store |
 | `zai-coding-cn` — GLM China | Same (pay-as-you-go keys show "no coding plan") | API key from pi's credential store |
 | `openai-codex` | 5h / weekly window usage + reset countdown + credits | pi OAuth (`/login openai-codex`) |
-| `xiaomi-token-plan-cn` — MiMo China | Plan / bonus / monthly usage + period end | Console session cookie (see below) |
+| `xiaomi-token-plan-cn` — MiMo China | Subscription tier / bonus / monthly usage + period end | Console session cookie (see below) |
 | `deepseek` | Account balance (pay-as-you-go, no reset window) | API key from pi's credential store |
 
 ## Install

@@ -229,7 +229,7 @@ export async function fetchMimo(cookie) {
 		return percent >= 0 && percent <= 1 ? percent * 100 : percent;
 	};
 	const plan = find(planItems, "plan_total_token");
-	if (plan) rows.push(row({ label: "Plan", percent: mimoPercent(plan.percent), used: Number(plan.used), limit: Number(plan.limit) }));
+	if (plan) rows.push(row({ label: detail?.data?.planName || "Plan", percent: mimoPercent(plan.percent), used: Number(plan.used), limit: Number(plan.limit) }));
 	const comp = find(planItems, "compensation_total_token");
 	if (comp && Number(comp.limit) > 0)
 		rows.push(row({ label: "Bonus", percent: mimoPercent(comp.percent), used: Number(comp.used), limit: Number(comp.limit) }));
