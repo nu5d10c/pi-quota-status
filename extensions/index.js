@@ -121,6 +121,8 @@ export default function (pi) {
 	let lastCtx = null;
 	let tuiRef = null;
 	let quotaText = null; // cached renderStatus output for the current provider
+	let quotaIcon = ""; // emoji marker shown before quotaText (💰)
+	let activeProviderId = null;
 
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
@@ -155,13 +157,18 @@ export default function (pi) {
 		if (!spec) {
 			quotaText = null;
 			quotaIcon = "";
+			activeProviderId = null;
 			tuiRef?.requestRender();
 			return;
 		}
-		// drop the previous provider's snapshot immediately so the switch renders instantly
-		quotaText = null;
-		quotaIcon = "";
-		tuiRef?.requestRender();
+		// drop the previous provider's snapshot immediately so a switch renders instantly
+		// (same-provider refreshes keep the old snapshot to avoid flicker)
+		if (activeProviderId !== providerId) {
+			quotaText = null;
+			quotaIcon = "";
+			tuiRef?.requestRender();
+		}
+		activeProviderId = providerId;
 		try {
 			const entry = await refresh(providerId, ctx, force);
 			quotaText = renderStatus(spec.label, entry);
