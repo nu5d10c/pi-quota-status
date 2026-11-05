@@ -1,14 +1,14 @@
 # pi-quota-status
 
-[Pi](https://pi.dev) extension: when you are using a matching model, a **widget above the editor** shows that plan's quota and reset countdown in real time.
+[Pi](https://pi.dev) extension: when you are using a matching model, that plan's quota and reset countdown are attached to the built-in footer's **extension status line** (`ctx.ui.setStatus`) — no extra line, no widget block.
 
 ```
-🟢 GLM·max 5h 1% ⏳3h12m | week 0.4% ⏳4d6h
+🟢 max 5h 1% ⏳3h12m | 7d 0.4% ⏳4d6h
 ```
 
-- Run `/quota` to expand the multi-row detail (colored meter, used/total, reset countdown); run it again to collapse
-- Load level: 🟢 <70% · 🟡 <90% · 🔴 ≥90%, with theme colors (`success`/`warning`/`error`); `⛔` means the query failed, `💡` means a hint (team seat, missing cookie, ...)
-- The widget follows model switches; for unsupported providers it renders zero lines and takes no space
+- Run `/quota` to see the multi-row detail (emoji meter, used/total, reset countdown) and force-refresh
+- Load level: 🟢 <70% · 🟡 <90% · 🔴 ≥90%; 💰 marks balance/pay-as-you-go; `⛔` means the query failed, `💡` means a hint (team seat, missing cookie, ...)
+- The status follows model switches; for unsupported providers the status is cleared
 - Auto-refreshes every 60s; data is cached for 60s; one provider failing never affects the others
 
 ## Supported providers
@@ -42,11 +42,11 @@ MiMo Token Plan usage lives behind Xiaomi SSO; the `tp-`/`mk-` inference key can
 3. Copy the full `Cookie` request header value
 4. `export XIAOMI_MIMO_CONSOLE_COOKIE='<paste>'` (put it in your shell config)
 
-The cookie expires with the browser session; when it does, the widget shows the hint again.
+The cookie expires with the browser session; when it does, the status shows the hint again.
 
 ## Known limitations
 
-- **GLM team seats**: querying requires an organization ID, which is not supported; the widget shows a hint instead of an error.
+- **GLM team seats**: querying requires an organization ID, which is not supported; the status shows a hint instead of an error.
 - The GLM / Codex quota endpoints are undocumented; official changes will require an update here.
 - DeepSeek is a topped-up balance with no "reset" concept — only the balance is shown.
 
