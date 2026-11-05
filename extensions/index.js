@@ -325,6 +325,9 @@ export default function (pi) {
 				// Esc arrives as "\x1b" (legacy) or "\x1b[27u" (kitty keyboard protocol, which pi enables)
 				const isEsc = data === "\x1b" || data === "\x1b[27u";
 				if (!allOpen || !isEsc) return undefined;
+				// never steal Esc from an open overlay (settings, selectors, confirm dialogs, …):
+				// extension input listeners run before overlay handling in the TUI pipeline
+				if (tuiRef?.hasOverlay?.()) return undefined;
 				closeAllView(lastCtx);
 				return { consume: true };
 			});
