@@ -291,6 +291,21 @@ export default function (pi) {
 		stopTimer();
 	});
 
+	pi.registerCommand("quota-all", {
+		description: "Show quota for every supported provider",
+		handler: async (_args, ctx) => {
+			// all fetchers run in parallel; each is cached (60s) and fails independently
+			const blocks = await Promise.all(
+				Object.entries(PROVIDERS).map(async ([providerId, spec]) => {
+					const entry = await refresh(providerId, ctx);
+					return renderDetail(spec.label, entry);
+				}),
+			);
+			ctx.ui.notify(blocks.map((b) => b.join("\n")).join("\n\n"), "info");
+			await update(ctx);
+		},
+	});
+
 	pi.registerCommand("quota", {
 		description: "Show quota detail (also force-refreshes)",
 		handler: async (_args, ctx) => {
