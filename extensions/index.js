@@ -1,9 +1,14 @@
 /**
  * pi-quota-status — index.js
  *
- * Pi extension: when the active model's provider matches, its plan quota and
- * reset countdown are attached to the built-in footer's extension status line
- * (ctx.ui.setStatus). /quota shows the multi-row detail and force-refreshes.
+ * Pi extension: when the active model's provider matches, that plan's quota and
+ * reset countdown are rendered INSIDE the default footer's stats line (injected
+ * into the gap between the token stats and the right-aligned model name) — no
+ * separate line. Uses ctx.ui.setFooter() with pi's own exported
+ * FooterComponent, so pwd/stats/model rendering stays identical to stock.
+ *
+ * Fetches are fully async and never block rendering: the footer renders from a
+ * cached snapshot; network updates land on the next frame via requestRender().
  *
  * Supported providers:
  *   zai                    → GLM Coding Plan global (api.z.ai)
@@ -17,6 +22,8 @@
  * never entered into model context.
  */
 
+import { FooterComponent } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	describeError,
 	fetchCodex,
@@ -28,7 +35,6 @@ import {
 	renderStatus,
 } from "./core.js";
 
-const STATUS_KEY = "quota";
 const CACHE_TTL_MS = 60_000;
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -100,11 +106,34 @@ async function resolveAuth(ctx, providerId) {
 	return { key: key || token, token, source: result?.source ?? auth.type };
 }
 
+/**
+ * Inject the quota text into the default stats line's padding gap:
+ *   `↑1.2k ↓456 $0.01 12%/200k  <quota>  ...padding...  (zai) glm-5`
+ *
+ * The built-in footer dims the remainder as ESC[2m + (padding + right side)
+ * + ESC[22;39m, and the padding is the only run of 2+ spaces. We re-enter that
+ * structure around the injected text so the surrounding dim stays intact.
+ * Returns the line unchanged when no wide-enough gap exists.
+ */
+function injectIntoStatsLine(line, quotaText) {
+	const match = /\x1b\[2m( +)/.exec(line);
+	if (!match) return null;
+	const gapStart = match.index + match[0].length - match[1].length; // first padding space
+	const gapLen = match[1].length;
+	const width = visibleWidth(quotaText);
+	const rem = gapLen - width - 2; // two spaces before the text, rest goes after
+	if (rem < 2) return null;
+	// inserted inside the open dim segment, so the text inherits the dim style
+	return line.slice(0, gapStart) + "  " + quotaText + " ".repeat(rem) + line.slice(gapStart + gapLen);
+}
+
 export default function (pi) {
 	const cache = new Map(); // providerId → { ...entry, at }
 	const inflight = new Map(); // providerId → Promise<entry>
 	let timer = null;
 	let lastCtx = null;
+	let tuiRef = null;
+	let quotaText = null; // cached renderStatus output for the current provider
 
 	async function refresh(providerId, ctx, force = false) {
 		const cached = cache.get(providerId);
@@ -132,20 +161,59 @@ export default function (pi) {
 		return p;
 	}
 
+	/** Background update: fetch (cached) then refresh the footer snapshot. Never awaited by render. */
 	async function update(ctx, { force = false } = {}) {
-		if (!ctx.hasUI) return;
 		const providerId = ctx.model?.provider;
 		const spec = providerId ? PROVIDERS[providerId] : undefined;
 		if (!spec) {
-			ctx.ui.setStatus(STATUS_KEY, undefined); // unsupported provider: clear
+			quotaText = null;
+			tuiRef?.requestRender();
 			return;
 		}
 		try {
 			const entry = await refresh(providerId, ctx, force);
-			ctx.ui.setStatus(STATUS_KEY, renderStatus(spec.label, entry));
+			quotaText = renderStatus(spec.label, entry);
 		} catch {
-			// refresh never rejects; leave the previous status just in case
+			// refresh never rejects; keep the previous snapshot just in case
 		}
+		tuiRef?.requestRender();
+	}
+
+	function mountFooter(ctx) {
+		ctx.ui.setFooter((tui, theme, footerData) => {
+			tuiRef = tui;
+			// FooterComponent needs a session shape; shim one over the extension ctx.
+			// Getters keep model / context usage fresh on every render.
+			const shim = {
+				get state() {
+					return { model: ctx.model, thinkingLevel: ctx.thinkingLevel };
+				},
+				get model() {
+					return ctx.model;
+				},
+				sessionManager: ctx.sessionManager,
+				getContextUsage: () => ctx.getContextUsage(),
+				routedModel: undefined,
+				modelRuntime: { isUsingSubscription: () => false },
+			};
+			return {
+				invalidate() {},
+				dispose() {},
+				render(width) {
+					const inner = new FooterComponent(shim, footerData).render(width);
+					if (quotaText) {
+						const injected = injectIntoStatsLine(inner[1] ?? "", quotaText);
+						if (injected) {
+							inner[1] = truncateToWidth(injected, width);
+							return inner;
+						}
+						// no room in the gap: degrade to its own line
+						inner.push(truncateToWidth(quotaText, width));
+					}
+					return inner;
+				},
+			};
+		});
 	}
 
 	function stopTimer() {
@@ -158,15 +226,16 @@ export default function (pi) {
 	pi.on("session_start", async (_event, ctx) => {
 		lastCtx = ctx;
 		stopTimer();
+		if (ctx.mode === "tui" && ctx.hasUI) mountFooter(ctx);
 		timer = setInterval(() => {
-			if (lastCtx) update(lastCtx); // periodic refresh keeps the countdown ticking
+			if (lastCtx) update(lastCtx).catch(() => {}); // keeps the countdown ticking
 		}, REFRESH_INTERVAL_MS);
-		await update(ctx);
+		await update(ctx).catch(() => {});
 	});
 
 	pi.on("model_select", async (_event, ctx) => {
 		lastCtx = ctx;
-		await update(ctx);
+		await update(ctx).catch(() => {});
 	});
 
 	pi.on("session_shutdown", () => {

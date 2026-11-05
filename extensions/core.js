@@ -302,21 +302,23 @@ function capPlan(plan) {
 }
 
 /**
- * One status line (no ANSI). Same semantics as renderWidget compact:
- * 🟢🟡🔴 = plan usage level;💰 = balance/pay-as-you-go;no provider name in normal state.
+ * One status line (plain, no emoji/ANSI — blends with the footer's dim style).
+ * Usage numbers carry the signal; no provider name in the normal state.
  */
 export function renderStatus(label, entry) {
 	if (!entry) return `${label} checking…`;
 	const head = label + (entry.plan ? `·${capPlan(entry.plan)}` : "");
-	if (entry.error) return `⛔ ${head} ${entry.error}`;
-	if (entry.hint && !entry.rows?.length) return `💡 ${head} ${entry.hint}`;
-	const body = (entry.rows ?? []).map((r) => rowText(r)).join(" | ");
-	if (!body) return `💡 ${head} ${entry.hint ?? "no data"}`;
-	const rows = entry.rows ?? [];
-	const hasUsage = rows.some((r) => r.percent !== undefined);
-	const icon = hasUsage ? loadEmoji(Math.max(...rows.map((r) => Number(r.percent) || 0))) : "💰";
-	const plan = capPlan(entry.plan) ?? "";
-	return `${icon} ${[plan, body].filter(Boolean).join(" ")}`;
+	if (entry.error) return `${head}: ${entry.error}`;
+	if (entry.hint && !entry.rows?.length) return `${head}: ${entry.hint}`;
+	const body = (entry.rows ?? [])
+		.map((r) => {
+			if (r.percent === undefined) return r.detail ?? r.label;
+			const cd = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
+			return `${r.label} ${fmtPct(r.percent)}${cd ? ` (${cd})` : ""}`;
+		})
+		.join(" | ");
+	if (!body) return `${head}: ${entry.hint ?? "no data"}`;
+	return body;
 }
 
 /**
