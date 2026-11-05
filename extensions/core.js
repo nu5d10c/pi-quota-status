@@ -276,9 +276,16 @@ function barEmoji(percent) {
 	return cell.repeat(filled) + "⬜".repeat(10 - filled);
 }
 
+/** GLM 语义: 5h 滚动窗口闲置时无 nextResetTime,首请求才启动计时 */
+function countdownText(r) {
+	if (r.resetAt) return `⏳${fmtCountdown(r.resetAt - Date.now())}`;
+	if (Number(r.percent) === 0) return "idle";
+	return null;
+}
+
 function rowText(r, { compact = true } = {}) {
 	if (r.percent !== undefined) {
-		const countdown = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
+		const countdown = countdownText(r);
 		if (!compact) {
 			const parts = [`${padLabel(r.label, 5)} ${barEmoji(r.percent)} ${fmtPct(r.percent).padStart(5)}`];
 			if (r.detail) parts.push(r.detail);
@@ -322,9 +329,9 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 			.map((r) => {
 				if (r.percent === undefined)
 					return theme.fg("text", `${r.label} ${r.detail ?? r.label}`);
-				const countdown = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
+				const countdown = countdownText(r);
 				const main = theme.fg(levelColor(r.percent), `${r.label} ${fmtPct(r.percent)}`);
-				return countdown ? `${main} ${theme.fg("dim", `⏳${countdown}`)}` : main;
+				return countdown ? `${main} ${theme.fg("dim", countdown)}` : main;
 			})
 			.join(theme.fg("dim", " | "));
 		return [`${[icon, plan, body].filter(Boolean).join(" ")}`];
@@ -341,14 +348,14 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 		const bar =
 			theme.fg(levelColor(r.percent), "█".repeat(filled)) +
 			theme.fg("dim", "░".repeat(10 - filled));
-		const countdown = r.resetAt ? fmtCountdown(r.resetAt - Date.now()) : null;
+		const countdown = countdownText(r);
 		const parts = [
 			theme.fg("dim", padLabel(r.label, 5)),
 			bar,
 			theme.fg(levelColor(r.percent), fmtPct(r.percent).padStart(5)),
 		];
 		if (r.detail) parts.push(theme.fg("muted", r.detail));
-		if (countdown) parts.push(theme.fg("dim", `⏳${countdown}`));
+		if (countdown) parts.push(theme.fg("dim", countdown));
 		lines.push("  " + parts.join("  "));
 	}
 	return lines;
