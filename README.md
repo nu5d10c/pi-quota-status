@@ -1,15 +1,16 @@
 # pi-quota-status
 
-[Pi](https://pi.dev) extension: when you are using a matching model, that plan's quota and reset countdown are attached to the built-in footer's **extension status line** (`ctx.ui.setStatus`) — no extra line, no widget block.
+[Pi](https://pi.dev) extension: when you are using a matching model, that plan's quota and reset countdown are rendered **inside the default footer's stats line** — injected into the gap between the token stats and the right-aligned model name, in the same dim style. No separate line, no emoji.
 
 ```
-🟢 max 5h 1% ⏳3h12m | 7d 0.4% ⏳4d6h
+↑1.2k ↓456 $0.012 12.3%/200k  5h 1% (3h12m) | 7d 0.4% (4d6h)          (zai) glm-5
 ```
 
-- Run `/quota` to see the multi-row detail (emoji meter, used/total, reset countdown) and force-refresh
-- Load level: 🟢 <70% · 🟡 <90% · 🔴 ≥90%; 💰 marks balance/pay-as-you-go; `⛔` means the query failed, `💡` means a hint (team seat, missing cookie, ...)
-- The status follows model switches; for unsupported providers the status is cleared
-- Auto-refreshes every 60s; data is cached for 60s; one provider failing never affects the others
+- Runs on pi's own exported `FooterComponent`, so pwd/stats/model rendering stays stock
+- `/quota` shows the multi-row detail (emoji meter, used/total, reset countdown) and force-refreshes
+- Fetches are async and cached (60s); rendering never blocks on the network
+- The status follows model switches; for unsupported providers the footer is fully stock
+- Auto-refreshes every 60s; one provider failing never affects the others
 
 ## Supported providers
 
