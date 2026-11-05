@@ -227,7 +227,10 @@ export async function fetchMimo(cookie) {
 
 // ─── DeepSeek (pay-as-you-go balance) ────────────────────────────────────────
 
-const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$", EUR: "€", GBP: "£", SGD: "S$", HKD: "HK$" };
+// Currency → emoji banknote (no emoji exists for SGD/HKD; keep symbols there)
+const CURRENCY_EMOJI = { CNY: "💴", USD: "💵", EUR: "💶", GBP: "💷" };
+
+const CURRENCY_EMOJI_FALLBACK = { SGD: "S$", HKD: "HK$" };
 
 export async function fetchDeepseek(key) {
 	const data = await getJson("https://api.deepseek.com/user/balance", { Authorization: `Bearer ${key}` });
@@ -236,7 +239,7 @@ export async function fetchDeepseek(key) {
 		.map((bi) => {
 			const n = Number(bi.total_balance);
 			return {
-				label: CURRENCY_SYMBOLS[bi.currency] ?? bi.currency ?? "?",
+				label: CURRENCY_EMOJI[bi.currency] ?? CURRENCY_EMOJI_FALLBACK[bi.currency] ?? bi.currency ?? "?",
 				detail: Number.isFinite(n) ? fmtInt(n) : String(bi.total_balance ?? "?"),
 				numeric: Number.isFinite(n) ? n : 0,
 			};
@@ -313,6 +316,9 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 		return [theme.fg("warning", `💡 ${head} ${entry.hint}`)];
 
 	const rows = entry.rows ?? [];
+	// level light only makes sense for usage rows; balance rows show their own emoji
+	const hasUsage = rows.some((r) => r.percent !== undefined);
+	const icon = hasUsage ? loadEmoji(Math.max(...rows.map((r) => Number(r.percent) || 0))) : "";
 	if (!expanded) {
 		const body = rows
 			.map((r) => {
@@ -323,8 +329,7 @@ export function renderWidget(label, entry, { expanded = false } = {}, theme) {
 				return countdown ? `${main} ${theme.fg("dim", `⏳${countdown}`)}` : main;
 			})
 			.join(theme.fg("dim", " | "));
-		const worst = Math.max(...rows.map((r) => Number(r.percent) || 0));
-		return [`${loadEmoji(worst)} ${[plan, body].filter(Boolean).join(" ")}`];
+		return [`${[icon, plan, body].filter(Boolean).join(" ")}`];
 	}
 
 	const first = [plan, entry.hint ? `💡 ${entry.hint}` : ""].filter(Boolean).join("  ");
