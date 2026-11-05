@@ -322,7 +322,9 @@ export default function (pi) {
 			// so Esc keeps its normal meaning otherwise
 			unsubInput?.();
 			unsubInput = ctx.ui.onTerminalInput?.((data) => {
-				if (!allOpen || data !== "\x1b") return undefined;
+				// Esc arrives as "\x1b" (legacy) or "\x1b[27u" (kitty keyboard protocol, which pi enables)
+				const isEsc = data === "\x1b" || data === "\x1b[27u";
+				if (!allOpen || !isEsc) return undefined;
 				closeAllView(lastCtx);
 				return { consume: true };
 			});
