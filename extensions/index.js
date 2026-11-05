@@ -191,12 +191,12 @@ export default function (pi) {
 							if (denom > 0) latestHit = ((u.cacheRead || 0) / denom) * 100;
 						}
 					}
-					if (latestHit !== undefined) parts.push(theme.fg("dim", `⚡${latestHit.toFixed(1)}%`));
+					if (latestHit !== undefined) parts.push(theme.fg("dim", `⚡ ${latestHit.toFixed(1)}%`));
 
 					// context usage — colorized by threshold like the built-in footer
 					const cu = ctx.getContextUsage();
 					if (cu?.percent != null) {
-						const ctxStr = `🌡️${cu.percent.toFixed(1)}%`;
+						const ctxStr = `🌡️ ${cu.percent.toFixed(1)}%`;
 						parts.push(
 							cu.percent > 90
 								? theme.fg("error", ctxStr)
